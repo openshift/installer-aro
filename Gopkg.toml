@@ -107,3 +107,8 @@ required = [
 [[constraint]]
   name = "github.com/pkg/sftp"
   version = "1.10.0"
+
+[[override]]
+  branch = "master"
+  name = "sigs.k8s.io/controller-runtime"
+  source = "https://github.com/kubernetes-sigs/controller-runtime.git"
