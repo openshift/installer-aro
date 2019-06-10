@@ -131,9 +131,5 @@ const (
 )
 
 func init() {
-	SchemeBuilder.Register(
-		&CredentialsRequest{}, &CredentialsRequestList{},
-		&AWSProviderStatus{}, &AWSProviderSpec{},
-		&AzureProviderStatus{}, &AzureProviderSpec{},
-	)
+	SchemeBuilder.Register(&CredentialsRequest{}, &CredentialsRequestList{}, &AWSProviderStatus{}, &AWSProviderSpec{})
 }

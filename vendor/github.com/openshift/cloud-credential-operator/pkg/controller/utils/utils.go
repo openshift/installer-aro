@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"context"
 	"fmt"
 
 	log "github.com/sirupsen/logrus"
@@ -9,17 +8,12 @@ import (
 	minterv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	ccaws "github.com/openshift/cloud-credential-operator/pkg/aws"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	configv1 "github.com/openshift/api/config/v1"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/iam"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 // credMintingActions is a list of AWS verbs needed to run in the mode where the
@@ -103,29 +97,10 @@ var (
 	credentialRequestCodec  = serializer.NewCodecFactory(credentailRequestScheme)
 )
 
-const (
-	infrastructureConfigName = "cluster"
-)
-
 func init() {
 	if err := minterv1.AddToScheme(credentailRequestScheme); err != nil {
 		panic(err)
 	}
-}
-
-// LoadInfrastructureName loads the cluster Infrastructure config and returns the infra name
-// used to identify this cluster, and tag some cloud objects.
-func LoadInfrastructureName(c client.Client, logger log.FieldLogger) (string, error) {
-	infra := &configv1.Infrastructure{}
-	err := c.Get(context.Background(), types.NamespacedName{Name: "cluster"}, infra)
-	if err != nil {
-		logger.WithError(err).Error("error loading Infrastructure config 'cluster'")
-		return "", err
-	}
-
-	logger.Debugf("Loaded infrastructure name: %s", infra.Status.InfrastructureName)
-	return infra.Status.InfrastructureName, nil
-
 }
 
 // CheckCloudCredCreation will see whether we have enough permissions to create new sub-creds
@@ -255,8 +230,7 @@ func getCredentialRequestStatements(crBytes []byte) ([]minterv1.StatementEntry, 
 		return statementList, err
 	}
 
-	awsSpec := minterv1.AWSProviderSpec{}
-	err = awsCodec.DecodeProviderSpec(cr.Spec.ProviderSpec, &awsSpec)
+	awsSpec, err := awsCodec.DecodeProviderSpec(cr.Spec.ProviderSpec, &minterv1.AWSProviderSpec{})
 	if err != nil {
 		return statementList, fmt.Errorf("error decoding spec.ProviderSpec: %v", err)
 	}

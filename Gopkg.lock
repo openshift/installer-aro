@@ -213,14 +213,6 @@
   version = "v1.1.0"
 
 [[projects]]
-  digest = "1:22de25a8199e3bda0f498a4a6cdfc898aba08634daff5220ab119a28f4776259"
-  name = "github.com/evanphx/json-patch"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "aad56889c1abf591875aed4f81df25e920bf0f4d"
-  version = "v4.4.0"
-
-[[projects]]
   digest = "1:81466b4218bf6adddac2572a30ac733a9255919bc2f470b4827a317bd4ee1756"
   name = "github.com/ghodss/yaml"
   packages = ["."]
@@ -526,8 +518,7 @@
   revision = "f4b242dfe08529a11803996e325ab6dc127d4e1d"
 
 [[projects]]
-  branch = "master"
-  digest = "1:9b32d383baa131f512dceb4a9d43efe2a1490d0de5a186a03a3bd16d834863c6"
+  digest = "1:476ab9e1d63eb879d1869f6876704646de0136a428ba7bba8f3804c1e6fb071b"
   name = "github.com/openshift/cloud-credential-operator"
   packages = [
     "pkg/apis/cloudcredential/v1",
@@ -536,9 +527,10 @@
     "version",
   ]
   pruneopts = "NUT"
-  revision = "80471ac1c114eb910ddceba4aa8284e052f19554"
+  revision = "4b6d10a82cd4949ade8056e5fbbf29e0765a0f47"
 
 [[projects]]
+  branch = "master"
   digest = "1:03fe1745d2916b44cf208a1014a783ad9f1663ad16f03b939cd2e66e30bb3c74"
   name = "github.com/openshift/cluster-api"
   packages = [
@@ -566,7 +558,7 @@
   name = "github.com/openshift/library-go"
   packages = ["pkg/config/clusteroperator/v1helpers"]
   pruneopts = "NUT"
-  revision = "03147f3df0d317e6294355115993291659808735"
+  revision = "20936da22c8016be17cb99f126f321c68433fb96"
 
 [[projects]]
   digest = "1:5bfff65eba275066cdf304a0faf91c7709e0f612ebb9760046adf6035d63ef5c"
@@ -1119,11 +1111,12 @@
   version = "v0.3.2"
 
 [[projects]]
-  digest = "1:ff54706d46de40c865b5fcfc4bde1087c02510cd12e0150de8e405ab427d9907"
+  branch = "master"
+  digest = "1:0d7ddfe00c608fe323c58050e1541c2e0e72608ca86df20ed469f2647212abf5"
   name = "k8s.io/utils"
   packages = ["pointer"]
   pruneopts = "NUT"
-  revision = "4c3feeb576b06ef8fea769809bd3db5e5e78dc23"
+  revision = "c55fbcfc754a5b2ec2fbae8fb9dcac36bdba6a12"
 
 [[projects]]
   digest = "1:63ea39743dfa0c5d53e2ef1551ca6d9b80d868364b098193b7135e032fb3e487"
@@ -1148,15 +1141,14 @@
   source = "https://github.com/openshift/cluster-api-provider-aws.git"
 
 [[projects]]
-  branch = "master"
-  digest = "1:b15013ce6efbd55f8040ae2fbc90bddd8339ef5025fee5b16098dbe5a7fcd54e"
+  digest = "1:4271f208cbd48a3758384d61ae02c7fddb6b8dc8f8c01b946614e891709c9349"
   name = "sigs.k8s.io/cluster-api-provider-azure"
   packages = [
     "pkg/apis",
     "pkg/apis/azureprovider/v1alpha1",
   ]
   pruneopts = "NUT"
-  revision = "0f6d8d2d9e094e642de55abf70a33939e99a8ea2"
+  revision = "702ef3a407263373a619b4df1be7fda77ef2a7e5"
   source = "https://github.com/openshift/cluster-api-provider-azure.git"
 
 [[projects]]
@@ -1172,18 +1164,16 @@
   source = "https://github.com/openshift/cluster-api-provider-openstack.git"
 
 [[projects]]
-  branch = "master"
-  digest = "1:3ae5e7e6173df07455cd7de295c18d60bb3688bc74999a173ce836822d27b916"
+  digest = "1:f1eb153c64afa0405c89ef387fa6c8835387fad95b396bcff2a92767f2ad17f3"
   name = "sigs.k8s.io/controller-runtime"
   packages = [
     "pkg/client",
     "pkg/client/apiutil",
     "pkg/runtime/scheme",
-    "pkg/scheme",
   ]
   pruneopts = "NUT"
-  revision = "056a18adfb38c7cafac2aeefdda0b63c41c0919b"
-  source = "https://github.com/kubernetes-sigs/controller-runtime.git"
+  revision = "477bf4f046c31c351b46fa00262bc814ac0bbca1"
+  version = "v0.1.11"
 
 [[projects]]
   digest = "1:8730e0150dfb2b7e173890c8b9868e7a273082ef8e39f4940e3506a481cf895c"
