@@ -36,7 +36,9 @@ func (a *PlatformProvisionCheck) Dependencies() []asset.Asset {
 // Generate queries for input from the user.
 func (a *PlatformProvisionCheck) Generate(dependencies asset.Parents) error {
 	ic := &InstallConfig{}
+	platformCreds := &PlatformCreds{}
 	dependencies.Get(ic)
+	dependencies.Get(platformCreds)
 
 	var err error
 	platform := ic.Config.Platform.Name()
@@ -47,7 +49,7 @@ func (a *PlatformProvisionCheck) Generate(dependencies asset.Parents) error {
 			return err
 		}
 	case azure.Name:
-		err = azconfig.ValidatePublicDNS(ic.Config)
+		err = azconfig.ValidatePublicDNS(platformCreds.Azure, ic.Config)
 		if err != nil {
 			return err
 		}

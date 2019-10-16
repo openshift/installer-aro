@@ -166,6 +166,7 @@ spec:
 		t.Run(tc.name, func(t *testing.T) {
 			parents := asset.Parents{}
 			parents.Add(
+				&installconfig.PlatformCreds{},
 				&installconfig.ClusterID{
 					UUID:    "test-uuid",
 					InfraID: "test-infra-id",
