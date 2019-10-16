@@ -31,6 +31,7 @@ type config struct {
 	ImageURL                    string            `json:"azure_image_url,omitempty"`
 	Region                      string            `json:"azure_region,omitempty"`
 	BaseDomainResourceGroupName string            `json:"azure_base_domain_resource_group_name,omitempty"`
+	ResourceGroupName           string            `json:"azure_resource_group_name"`
 	NetworkResourceGroupName    string            `json:"azure_network_resource_group_name"`
 	VirtualNetwork              string            `json:"azure_virtual_network"`
 	ControlPlaneSubnet          string            `json:"azure_control_plane_subnet"`
@@ -92,6 +93,7 @@ func TFVars(sources TFVarsSources) ([]byte, error) {
 		ImageURL:                    sources.ImageURL,
 		Private:                     sources.Publish == types.InternalPublishingStrategy,
 		BaseDomainResourceGroupName: sources.BaseDomainResourceGroupName,
+		ResourceGroupName:           masterConfig.ResourceGroup,
 		NetworkResourceGroupName:    masterConfig.NetworkResourceGroup,
 		VirtualNetwork:              masterConfig.Vnet,
 		ControlPlaneSubnet:          masterConfig.Subnet,

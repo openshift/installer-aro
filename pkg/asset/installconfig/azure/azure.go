@@ -3,6 +3,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -18,6 +19,9 @@ import (
 const (
 	defaultRegion string = "eastus"
 )
+
+// https://docs.microsoft.com/en-us/azure/architecture/best-practices/resource-naming#general
+var resourceGroupNameRx = regexp.MustCompile(`(?i)^[-a-z0-9_().]{0,89}[-a-z0-9_()]$`)
 
 // Platform collects azure-specific configuration.
 func Platform(credentials *Credentials) (*azure.Platform, error) {
@@ -79,8 +83,28 @@ func Platform(credentials *Credentials) (*azure.Platform, error) {
 		return nil, err
 	}
 
+	var resourceGroupName string
+	err = survey.Ask([]*survey.Question{
+		{
+			Prompt: &survey.Select{
+				Message: "Resource group name",
+				Help:    "The azure resource group to be used for installation.",
+			},
+			Validate: survey.ComposeValidators(survey.Required, func(ans interface{}) error {
+				if !resourceGroupNameRx.MatchString(ans.(string)) {
+					return errors.Errorf("invalid resource group %q", ans.(string))
+				}
+				return nil
+			}),
+		},
+	}, &resourceGroupName)
+	if err != nil {
+		return nil, err
+	}
+
 	return &azure.Platform{
-		Region: region,
+		Region:            region,
+		ResourceGroupName: resourceGroupName,
 	}, nil
 }
 
