@@ -1,17 +1,28 @@
 package validation
 
 import (
+	"regexp"
+
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/azure"
 )
 
+// https://docs.microsoft.com/en-us/azure/architecture/best-practices/resource-naming#general
+var resourceGroupNameRx = regexp.MustCompile(`(?i)^[-a-z0-9_().]{0,89}[-a-z0-9_()]$`)
+
 // ValidatePlatform checks that the specified platform is valid.
 func ValidatePlatform(p *azure.Platform, publish types.PublishingStrategy, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if p.Region == "" {
 		allErrs = append(allErrs, field.Required(fldPath.Child("region"), "region should be set to one of the supported Azure regions"))
+	}
+	if p.ResourceGroupName == "" {
+		allErrs = append(allErrs, field.Required(fldPath.Child("resourceGroupName"), "resourceGroupName should be set"))
+	}
+	if !resourceGroupNameRx.MatchString(p.ResourceGroupName) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("resourceGroupName"), p.ResourceGroupName, "resourceGroupName is invalid"))
 	}
 	if publish == types.ExternalPublishingStrategy {
 		if p.BaseDomainResourceGroupName == "" {

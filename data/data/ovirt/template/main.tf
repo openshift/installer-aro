@@ -22,6 +22,12 @@ data "ovirt_clusters" "clusters" {
   }
 }
 
+// default vnic profile of ovirt's cluster network
+data "ovirt_vnic_profiles" "vnic_profiles" {
+  name_regex = var.ovirt_network_name
+  network_id = local.network_id
+}
+
 // work around the missing regexall in terraform < 0.12.9
 // if length(regexall("^Blank.*$", t.name)
 locals {
@@ -45,16 +51,15 @@ resource "ovirt_vm" "tmp_import_vm" {
   count      = length(local.existing_id) == 0 ? 1 : 0
   name       = "tmpvm-for-${ovirt_image_transfer.releaseimage.0.alias}"
   cluster_id = var.ovirt_cluster_id
+  cores      = var.ovirt_template_cpu
+  memory     = var.ovirt_template_mem
   block_device {
     disk_id   = ovirt_image_transfer.releaseimage.0.disk_id
     interface = "virtio_scsi"
   }
-  os {
-    type = "rhcos_x64"
-  }
   nics {
     name            = "nic1"
-    vnic_profile_id = var.ovirt_vnic_profile_id
+    vnic_profile_id = data.ovirt_vnic_profiles.vnic_profiles.vnic_profiles.0.id
   }
   depends_on = [ovirt_image_transfer.releaseimage]
 }
@@ -68,6 +73,7 @@ resource "ovirt_template" "releaseimage_template" {
   // create from vm
   vm_id      = ovirt_vm.tmp_import_vm.0.id
   depends_on = [ovirt_vm.tmp_import_vm]
+  cores      = var.ovirt_template_cpu
 }
 
 // finally get the template by name(should be unique), fail if it doesn't exist

@@ -106,7 +106,7 @@ func (d *DNS) Generate(dependencies asset.Parents) error {
 			}
 		}
 		config.Spec.PrivateZone = &configv1.DNSZone{
-			ID: dnsConfig.GetPrivateDNSZoneID(clusterID.InfraID+"-rg", installConfig.Config.ClusterDomain()),
+			ID: dnsConfig.GetPrivateDNSZoneID(installConfig.Config.Azure.ResourceGroupName, installConfig.Config.ClusterDomain()),
 		}
 	case gcptypes.Name:
 		if installConfig.Config.Publish == types.ExternalPublishingStrategy {
