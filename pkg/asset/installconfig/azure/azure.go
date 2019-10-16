@@ -20,13 +20,13 @@ const (
 )
 
 // Platform collects azure-specific configuration.
-func Platform() (*azure.Platform, error) {
-	regions, err := getRegions()
+func Platform(credentials *Credentials) (*azure.Platform, error) {
+	regions, err := getRegions(credentials)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get list of regions")
 	}
 
-	resourceCapableRegions, err := getResourceCapableRegions()
+	resourceCapableRegions, err := getResourceCapableRegions(credentials)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get list of resources to check available regions")
 	}
@@ -84,8 +84,8 @@ func Platform() (*azure.Platform, error) {
 	}, nil
 }
 
-func getRegions() (map[string]string, error) {
-	client, err := NewClient(context.TODO())
+func getRegions(credentials *Credentials) (map[string]string, error) {
+	client, err := NewClient(context.TODO(), credentials)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +105,8 @@ func getRegions() (map[string]string, error) {
 	return allLocations, nil
 }
 
-func getResourceCapableRegions() ([]string, error) {
-	client, err := NewClient(context.TODO())
+func getResourceCapableRegions(credentials *Credentials) ([]string, error) {
+	client, err := NewClient(context.TODO(), credentials)
 	if err != nil {
 		return nil, err
 	}
