@@ -31,7 +31,8 @@ type ClusterUninstaller struct {
 	GraphAuthorizer autorest.Authorizer
 	Authorizer      autorest.Authorizer
 
-	InfraID string
+	ResourceGroupName string
+	InfraID           string
 
 	Logger logrus.FieldLogger
 
@@ -74,27 +75,32 @@ func New(logger logrus.FieldLogger, metadata *types.ClusterMetadata) (providers.
 		return nil, err
 	}
 
+	resourceGroupName := metadata.ClusterPlatformMetadata.Azure.ResourceGroupName
+	if resourceGroupName == "" {
+		resourceGroupName = metadata.InfraID + "-rg"
+	}
+
 	return &ClusterUninstaller{
-		SubscriptionID:  session.Credentials.SubscriptionID,
-		TenantID:        session.Credentials.TenantID,
-		GraphAuthorizer: session.GraphAuthorizer,
-		Authorizer:      session.Authorizer,
-		InfraID:         metadata.InfraID,
-		Logger:          logger,
+		SubscriptionID:    session.Credentials.SubscriptionID,
+		TenantID:          session.Credentials.TenantID,
+		GraphAuthorizer:   session.GraphAuthorizer,
+		Authorizer:        session.Authorizer,
+		ResourceGroupName: resourceGroupName,
+		InfraID:           metadata.InfraID,
+		Logger:            logger,
 	}, nil
 }
 
 // Run is the entrypoint to start the uninstall process.
 func (o *ClusterUninstaller) Run() error {
 	o.configureClients()
-	group := o.InfraID + "-rg"
 	o.Logger.Debug("deleting public records")
-	if err := deletePublicRecords(context.TODO(), o.zonesClient, o.recordsClient, o.privateZonesClient, o.privateRecordSetsClient, o.Logger, group); err != nil {
+	if err := deletePublicRecords(context.TODO(), o.zonesClient, o.recordsClient, o.privateZonesClient, o.privateRecordSetsClient, o.Logger, o.ResourceGroupName); err != nil {
 		o.Logger.Debug(err)
 		return errors.Wrap(err, "failed to delete public DNS records")
 	}
 	o.Logger.Debug("deleting resource group")
-	if err := deleteResourceGroup(context.TODO(), o.resourceGroupsClient, o.Logger, group); err != nil {
+	if err := deleteResourceGroup(context.TODO(), o.resourceGroupsClient, o.Logger, o.ResourceGroupName); err != nil {
 		o.Logger.Debug(err)
 		return errors.Wrap(err, "failed to delete resource group")
 	}

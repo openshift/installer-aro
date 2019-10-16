@@ -87,6 +87,11 @@ variable "azure_preexisting_network" {
   description = "Specifies whether an existing network should be used or a new one created for installation."
 }
 
+variable "azure_resource_group_name" {
+  type        = string
+  description = "The name of the resource group, either existing or to be created."
+}
+
 variable "azure_network_resource_group_name" {
   type        = string
   description = "The name of the network resource group, either existing or to be created."
