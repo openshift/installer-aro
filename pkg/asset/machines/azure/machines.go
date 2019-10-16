@@ -100,7 +100,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		Location:          platform.Region,
 		VMSize:            mpool.InstanceType,
 		Image: azureprovider.Image{
-			ResourceID: fmt.Sprintf("/resourceGroups/%s/providers/Microsoft.Compute/images/%s", clusterID+"-rg", clusterID),
+			ResourceID: fmt.Sprintf("/resourceGroups/%s/providers/Microsoft.Compute/images/%s", platform.ResourceGroupName, clusterID),
 		},
 		OSDisk: azureprovider.OSDisk{
 			OSType:     "Linux",
@@ -113,7 +113,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		Subnet:               subnet,
 		ManagedIdentity:      fmt.Sprintf("%s-identity", clusterID),
 		Vnet:                 virtualNetwork,
-		ResourceGroup:        fmt.Sprintf("%s-rg", clusterID),
+		ResourceGroup:        platform.ResourceGroupName,
 		NetworkResourceGroup: networkResourceGroup,
 	}, nil
 }
@@ -125,7 +125,7 @@ func ConfigMasters(machines []machineapi.Machine, clusterID string) {
 
 func getNetworkInfo(platform *azure.Platform, clusterID, role string) (string, string, string, error) {
 	if platform.VirtualNetwork == "" {
-		return fmt.Sprintf("%s-rg", clusterID), fmt.Sprintf("%s-vnet", clusterID), fmt.Sprintf("%s-%s-subnet", clusterID, role), nil
+		return platform.ResourceGroupName, fmt.Sprintf("%s-vnet", clusterID), fmt.Sprintf("%s-%s-subnet", clusterID, role), nil
 	}
 
 	switch role {
