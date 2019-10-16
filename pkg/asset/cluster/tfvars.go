@@ -76,6 +76,7 @@ func (t *TerraformVariables) Name() string {
 // Dependencies returns the dependency of the TerraformVariable
 func (t *TerraformVariables) Dependencies() []asset.Asset {
 	return []asset.Asset{
+		&installconfig.PlatformCreds{},
 		&installconfig.ClusterID{},
 		&installconfig.InstallConfig{},
 		new(rhcos.Image),
@@ -90,6 +91,7 @@ func (t *TerraformVariables) Dependencies() []asset.Asset {
 // Generate generates the terraform.tfvars file.
 func (t *TerraformVariables) Generate(parents asset.Parents) error {
 	ctx := context.TODO()
+	platformCreds := &installconfig.PlatformCreds{}
 	clusterID := &installconfig.ClusterID{}
 	installConfig := &installconfig.InstallConfig{}
 	bootstrapIgnAsset := &bootstrap.Bootstrap{}
@@ -98,7 +100,7 @@ func (t *TerraformVariables) Generate(parents asset.Parents) error {
 	workersAsset := &machines.Worker{}
 	rhcosImage := new(rhcos.Image)
 	rhcosBootstrapImage := new(rhcos.BootstrapImage)
-	parents.Get(clusterID, installConfig, bootstrapIgnAsset, masterIgnAsset, mastersAsset, workersAsset, rhcosImage, rhcosBootstrapImage)
+	parents.Get(platformCreds, clusterID, installConfig, bootstrapIgnAsset, masterIgnAsset, mastersAsset, workersAsset, rhcosImage, rhcosBootstrapImage)
 
 	platform := installConfig.Config.Platform.Name()
 	switch platform {
@@ -203,7 +205,7 @@ func (t *TerraformVariables) Generate(parents asset.Parents) error {
 			Data:     data,
 		})
 	case azure.Name:
-		sess, err := azureconfig.GetSession()
+		sess, err := azureconfig.GetSession(platformCreds.Azure)
 		if err != nil {
 			return err
 		}
