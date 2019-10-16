@@ -11,6 +11,7 @@ type CloudProviderConfig struct {
 	SubscriptionID           string
 	GroupLocation            string
 	ResourcePrefix           string
+	ResourceGroupName        string
 	NetworkResourceGroupName string
 	NetworkSecurityGroupName string
 	VirtualNetworkName       string
@@ -20,7 +21,6 @@ type CloudProviderConfig struct {
 // JSON generates the cloud provider json config for the azure platform.
 // managed resource names are matching the convention defined by capz
 func (params CloudProviderConfig) JSON() (string, error) {
-	resourceGroupName := params.ResourcePrefix + "-rg"
 	config := config{
 		authConfig: authConfig{
 			Cloud:                       "AzurePublicCloud",
@@ -34,7 +34,7 @@ func (params CloudProviderConfig) JSON() (string, error) {
 			// ref: https://github.com/kubernetes/kubernetes/blob/4b7c607ba47928a7be77fadef1550d6498397a4c/staging/src/k8s.io/legacy-cloud-providers/azure/auth/azure_auth.go#L69
 			UserAssignedIdentityID: "",
 		},
-		ResourceGroup:          resourceGroupName,
+		ResourceGroup:          params.ResourceGroupName,
 		Location:               params.GroupLocation,
 		SubnetName:             params.SubnetName,
 		SecurityGroupName:      params.NetworkSecurityGroupName,
