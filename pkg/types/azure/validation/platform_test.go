@@ -34,6 +34,7 @@ func TestValidatePlatform(t *testing.T) {
 		{
 			name: "minimal",
 			platform: &azure.Platform{
+				ResourceGroupName:           "rg",
 				Region:                      "eastus",
 				BaseDomainResourceGroupName: "group",
 			},
@@ -42,6 +43,7 @@ func TestValidatePlatform(t *testing.T) {
 		{
 			name: "valid machine pool",
 			platform: &azure.Platform{
+				ResourceGroupName:           "rg",
 				Region:                      "eastus",
 				BaseDomainResourceGroupName: "group",
 				DefaultMachinePlatform:      &azure.MachinePool{},
@@ -51,6 +53,7 @@ func TestValidatePlatform(t *testing.T) {
 		{
 			name: "valid subnets & virtual network",
 			platform: &azure.Platform{
+				ResourceGroupName:           "rg",
 				Region:                      "eastus",
 				BaseDomainResourceGroupName: "group",
 				NetworkResourceGroupName:    "networkresourcegroup",
