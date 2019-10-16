@@ -13,6 +13,7 @@ func TestCloudProviderConfig(t *testing.T) {
 		ResourcePrefix:           "clusterid",
 		SubscriptionID:           "subID",
 		TenantID:                 "tenantID",
+		ResourceGroupName:        "clusterid-rg",
 		NetworkResourceGroupName: "clusterid-rg",
 		NetworkSecurityGroupName: "clusterid-node-nsg",
 		VirtualNetworkName:       "clusterid-vnet",

@@ -1,7 +1,6 @@
 package manifests
 
 import (
-	"fmt"
 	"path/filepath"
 	"sort"
 
@@ -108,10 +107,9 @@ func (i *Infrastructure) Generate(dependencies asset.Parents) error {
 	case azure.Name:
 		config.Spec.PlatformSpec.Type = configv1.AzurePlatformType
 
-		rg := fmt.Sprintf("%s-rg", clusterID.InfraID)
 		config.Status.PlatformStatus.Azure = &configv1.AzurePlatformStatus{
-			ResourceGroupName:        rg,
-			NetworkResourceGroupName: rg,
+			ResourceGroupName:        installConfig.Config.Azure.ResourceGroupName,
+			NetworkResourceGroupName: installConfig.Config.Azure.ResourceGroupName,
 		}
 		if nrg := installConfig.Config.Platform.Azure.NetworkResourceGroupName; nrg != "" {
 			config.Status.PlatformStatus.Azure.NetworkResourceGroupName = nrg
