@@ -121,12 +121,12 @@ func validateRegion(client API, fieldPath *field.Path, p *aztypes.Platform) fiel
 }
 
 // validateRegionForUltraDisks checks that the Ultra SSD disks are available for the user.
-func validateRegionForUltraDisks(fldPath *field.Path, region string) *field.Error {
+func validateRegionForUltraDisks(credentials *Credentials, fldPath *field.Path, region string) *field.Error {
 	diskType := "UltraSSD_LRS"
 
 	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
 	defer cancel()
-	client, err := NewClient(ctx)
+	client, err := NewClient(ctx, credentials)
 	if err != nil {
 		return field.InternalError(fldPath.Child("diskType"), err)
 	}
@@ -149,7 +149,7 @@ func validateRegionForUltraDisks(fldPath *field.Path, region string) *field.Erro
 
 // ValidatePublicDNS checks DNS for CNAME, A, and AAA records for
 // api.zoneName. If a record exists, it's likely a cluster already exists.
-func ValidatePublicDNS(ic *types.InstallConfig) error {
+func ValidatePublicDNS(creds *Credentials, ic *types.InstallConfig) error {
 	// If this is an internal cluster, this check is not necessary
 	if ic.Publish == types.InternalPublishingStrategy {
 		return nil
@@ -158,7 +158,7 @@ func ValidatePublicDNS(ic *types.InstallConfig) error {
 	clusterName := ic.ObjectMeta.Name
 	record := fmt.Sprintf("api.%s", clusterName)
 
-	azureDNS, err := NewDNSConfig()
+	azureDNS, err := NewDNSConfig(creds)
 	if err != nil {
 		return err
 	}

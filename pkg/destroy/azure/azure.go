@@ -69,7 +69,7 @@ func (o *ClusterUninstaller) configureClients() {
 
 // New returns an Azure destroyer from ClusterMetadata.
 func New(logger logrus.FieldLogger, metadata *types.ClusterMetadata) (providers.Destroyer, error) {
-	session, err := azuresession.GetSession()
+	session, err := azuresession.GetSession(nil)
 	if err != nil {
 		return nil, err
 	}

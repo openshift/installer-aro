@@ -44,6 +44,7 @@ func (a *InstallConfig) Dependencies() []asset.Asset {
 		&clusterName{},
 		&pullSecret{},
 		&platform{},
+		&PlatformCreds{},
 	}
 }
 
@@ -54,12 +55,14 @@ func (a *InstallConfig) Generate(parents asset.Parents) error {
 	clusterName := &clusterName{}
 	pullSecret := &pullSecret{}
 	platform := &platform{}
+	platformCreds := &PlatformCreds{}
 	parents.Get(
 		sshPublicKey,
 		baseDomain,
 		clusterName,
 		pullSecret,
 		platform,
+		platformCreds,
 	)
 
 	a.Config = &types.InstallConfig{
@@ -84,7 +87,7 @@ func (a *InstallConfig) Generate(parents asset.Parents) error {
 	a.Config.BareMetal = platform.BareMetal
 	a.Config.Ovirt = platform.Ovirt
 
-	return a.finish("")
+	return a.finish("", platformCreds)
 }
 
 // Name returns the human-friendly name of the asset.
@@ -121,14 +124,14 @@ func (a *InstallConfig) Load(f asset.FileFetcher) (found bool, err error) {
 		return false, errors.Wrap(err, "failed to upconvert install config")
 	}
 
-	err = a.finish(installConfigFilename)
+	err = a.finish(installConfigFilename, nil)
 	if err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-func (a *InstallConfig) finish(filename string) error {
+func (a *InstallConfig) finish(filename string, platformCreds *PlatformCreds) error {
 	defaults.SetInstallConfigDefaults(a.Config)
 
 	if a.Config.AWS != nil {
@@ -142,7 +145,7 @@ func (a *InstallConfig) finish(filename string) error {
 		return errors.Wrapf(err, "invalid %q file", filename)
 	}
 
-	if err := a.platformValidation(); err != nil {
+	if err := a.platformValidation(platformCreds); err != nil {
 		return err
 	}
 
@@ -157,9 +160,13 @@ func (a *InstallConfig) finish(filename string) error {
 	return nil
 }
 
-func (a *InstallConfig) platformValidation() error {
+func (a *InstallConfig) platformValidation(platformCreds *PlatformCreds) error {
 	if a.Config.Platform.Azure != nil {
-		client, err := icazure.NewClient(context.TODO())
+		var credentials *icazure.Credentials
+		if platformCreds != nil {
+			credentials = platformCreds.Azure
+		}
+		client, err := icazure.NewClient(context.TODO(), credentials)
 		if err != nil {
 			return err
 		}

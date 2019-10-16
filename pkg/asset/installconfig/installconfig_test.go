@@ -47,6 +47,7 @@ func TestInstallConfigGenerate_FillsInDefaults(t *testing.T) {
 	installConfig := &InstallConfig{}
 	parents := asset.Parents{}
 	parents.Add(
+		&PlatformCreds{},
 		sshPublicKey,
 		baseDomain,
 		clusterName,
