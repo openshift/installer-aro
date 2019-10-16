@@ -28,11 +28,11 @@ type Client struct {
 }
 
 // NewClient initializes a client with a session.
-func NewClient(ctx context.Context) (*Client, error) {
+func NewClient(ctx context.Context, credentials *Credentials) (*Client, error) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
-	ssn, err := GetSession()
+	ssn, err := GetSession(credentials)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get session")
 	}
