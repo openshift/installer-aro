@@ -16,8 +16,6 @@ type CloudProviderConfig struct {
 	NetworkSecurityGroupName string
 	VirtualNetworkName       string
 	SubnetName               string
-	AADClientID              string
-	AADClientSecret          string
 	ARO                      bool
 }
 
@@ -54,9 +52,10 @@ func (params CloudProviderConfig) JSON() (string, error) {
 	}
 
 	if params.ARO {
+		// ARO uses CloudConfigType=Merge and secret in kube-system namespace
+		// to create final configuration. Secret and configuration will be
+		// merged on controller startup
 		config.authConfig.UseManagedIdentityExtension = false
-		config.authConfig.AADClientID = params.AADClientID
-		config.authConfig.AADClientSecret = params.AADClientSecret
 	}
 
 	buff := &bytes.Buffer{}
