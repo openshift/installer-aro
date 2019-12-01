@@ -90,7 +90,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		return nil, err
 	}
 
-	return &azureprovider.AzureMachineProviderSpec{
+	spec := &azureprovider.AzureMachineProviderSpec{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "azureproviderconfig.openshift.io/v1beta1",
 			Kind:       "AzureMachineProviderSpec",
@@ -115,7 +115,13 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		Vnet:                 virtualNetwork,
 		ResourceGroup:        platform.ResourceGroupName,
 		NetworkResourceGroup: networkResourceGroup,
-	}, nil
+	}
+
+	if platform.ARO {
+		spec.ManagedIdentity = ""
+	}
+
+	return spec, nil
 }
 
 // ConfigMasters sets the PublicIP flag and assigns a set of load balancers to the given machines
