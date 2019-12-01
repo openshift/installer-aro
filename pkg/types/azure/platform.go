@@ -39,6 +39,9 @@ type Platform struct {
 	//
 	// +optional
 	ComputeSubnet string `json:"computeSubnet,omitempty"`
+
+	// ARO is a flag that indicates specialisations for the ARO platform
+	ARO bool `json:"aro,omitempty"`
 }
 
 //SetBaseDomain parses the baseDomainID and sets the related fields on azure.Platform
