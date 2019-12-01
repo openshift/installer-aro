@@ -16,6 +16,7 @@ type CloudProviderConfig struct {
 	NetworkSecurityGroupName string
 	VirtualNetworkName       string
 	SubnetName               string
+	ARO                      bool
 }
 
 // JSON generates the cloud provider json config for the azure platform.
@@ -64,6 +65,11 @@ func (params CloudProviderConfig) JSON() (string, error) {
 		//https://docs.microsoft.com/en-us/azure/load-balancer/load-balancer-tcp-reset
 		LoadBalancerSku: "standard",
 	}
+
+	if params.ARO {
+		config.authConfig.UseManagedIdentityExtension = false
+	}
+
 	buff := &bytes.Buffer{}
 	encoder := json.NewEncoder(buff)
 	encoder.SetIndent("", "\t")
