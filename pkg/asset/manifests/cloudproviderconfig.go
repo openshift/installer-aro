@@ -113,7 +113,7 @@ func (cpc *CloudProviderConfig) Generate(dependencies asset.Parents) error {
 		if installConfig.Config.Azure.ComputeSubnet != "" {
 			subnet = installConfig.Config.Azure.ComputeSubnet
 		}
-		azureConfig, err := azure.CloudProviderConfig{
+		config := azure.CloudProviderConfig{
 			GroupLocation:            installConfig.Config.Azure.Region,
 			ResourcePrefix:           clusterID.InfraID,
 			SubscriptionID:           session.Credentials.SubscriptionID,
@@ -123,7 +123,13 @@ func (cpc *CloudProviderConfig) Generate(dependencies asset.Parents) error {
 			NetworkSecurityGroupName: nsg,
 			VirtualNetworkName:       vnet,
 			SubnetName:               subnet,
-		}.JSON()
+			ARO:                      installConfig.Config.Azure.ARO,
+		}
+		if platformCreds.Azure != nil {
+			config.AADClientID = platformCreds.Azure.ClientID
+			config.AADClientSecret = platformCreds.Azure.ClientSecret
+		}
+		azureConfig, err := config.JSON()
 		if err != nil {
 			return errors.Wrap(err, "could not create cloud provider config")
 		}
