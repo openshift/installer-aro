@@ -129,6 +129,21 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		PublicLoadBalancer:   publicLB,
 	}
 
+	if platform.Image != nil {
+		if platform.Image.ResourceID != "" {
+			spec.Image = azureprovider.Image{
+				ResourceID: platform.Image.ResourceID,
+			}
+		} else {
+			spec.Image = azureprovider.Image{
+				Publisher: platform.Image.Publisher,
+				Offer:     platform.Image.Offer,
+				SKU:       platform.Image.SKU,
+				Version:   platform.Image.Version,
+			}
+		}
+	}
+
 	if platform.ARO {
 		spec.ManagedIdentity = ""
 	}
