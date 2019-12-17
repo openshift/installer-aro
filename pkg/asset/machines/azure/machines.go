@@ -79,12 +79,33 @@ func Machines(clusterID string, config *types.InstallConfig, pool *types.Machine
 }
 
 func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string, userDataSecret string, clusterID string, role string, azIdx *int) (*machineapi.AzureMachineProviderSpec, error) {
+	var image machineapi.Image
+
 	var az *string
 	if len(mpool.Zones) > 0 && azIdx != nil {
 		az = &mpool.Zones[*azIdx]
 	}
 
 	rg := platform.ClusterResourceGroupName(clusterID)
+
+	if platform.Image != nil {
+		if platform.Image.ResourceID != "" {
+			image = machineapi.Image{
+				ResourceID: platform.Image.ResourceID,
+			}
+		} else {
+			image = machineapi.Image{
+				Publisher: platform.Image.Publisher,
+				Offer:     platform.Image.Offer,
+				SKU:       platform.Image.SKU,
+				Version:   platform.Image.Version,
+			}
+		}
+	} else {
+		image = machineapi.Image{
+			ResourceID: fmt.Sprintf("/resourceGroups/%s/providers/Microsoft.Compute/images/%s", rg, clusterID),
+		}
+	}
 
 	networkResourceGroup, virtualNetwork, subnet, err := getNetworkInfo(platform, clusterID, role)
 	if err != nil {
@@ -114,9 +135,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		CredentialsSecret: &corev1.SecretReference{Name: cloudsSecret, Namespace: cloudsSecretNamespace},
 		Location:          platform.Region,
 		VMSize:            mpool.InstanceType,
-		Image: machineapi.Image{
-			ResourceID: fmt.Sprintf("/resourceGroups/%s/providers/Microsoft.Compute/images/%s", rg, clusterID),
-		},
+		Image:             image,
 		OSDisk: machineapi.OSDisk{
 			OSType:     "Linux",
 			DiskSizeGB: mpool.OSDisk.DiskSizeGB,
