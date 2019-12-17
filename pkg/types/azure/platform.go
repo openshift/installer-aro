@@ -76,8 +76,30 @@ type Platform struct {
 	// +optional
 	ResourceGroupName string `json:"resourceGroupName,omitempty"`
 
+	// Image specifies the image parameters with which a cluster should be built
+	Image *Image `json:"image,omitempty"`
+
 	// ARO is a flag that indicates specialisations for the ARO platform
 	ARO bool `json:"aro,omitempty"`
+}
+
+// Image specifies the image parameters with which a cluster should be built.
+// Either ResourceID or Publisher/Offer/SKU/Version should be set.
+type Image struct {
+	// ResourceID is the resource ID of an existing Image resource
+	ResourceID string `json:"resourceId,omitempty"`
+
+	// Publisher is the image publisher
+	Publisher string `json:"publisher,omitempty"`
+
+	// Offer is the image offer
+	Offer string `json:"offer,omitempty"`
+
+	// SKU is the image SKU
+	SKU string `json:"sku,omitempty"`
+
+	// Version is the image version
+	Version string `json:"version,omitempty"`
 }
 
 // CloudEnvironment is the name of the Azure cloud environment
