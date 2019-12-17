@@ -81,7 +81,6 @@ func Machines(clusterID string, config *types.InstallConfig, pool *types.Machine
 
 func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string, userDataSecret string, clusterID string, role string, azIdx *int) (*azureprovider.AzureMachineProviderSpec, error) {
 	var az *string
-	var managedIdentity string
 	if len(mpool.Zones) > 0 && azIdx != nil {
 		az = &mpool.Zones[*azIdx]
 	}
@@ -102,13 +101,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		publicLB = ""
 	}
 
-	if platform.ARO {
-		managedIdentity = ""
-	} else {
-		managedIdentity = fmt.Sprintf("%s-identity", clusterID)
-	}
-
-	return &azureprovider.AzureMachineProviderSpec{
+	spec := &azureprovider.AzureMachineProviderSpec{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "azureproviderconfig.openshift.io/v1beta1",
 			Kind:       "AzureMachineProviderSpec",
@@ -129,12 +122,33 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		},
 		Zone:                 az,
 		Subnet:               subnet,
-		ManagedIdentity:      managedIdentity,
+		ManagedIdentity:      fmt.Sprintf("%s-identity", clusterID),
 		Vnet:                 virtualNetwork,
 		ResourceGroup:        rg,
 		NetworkResourceGroup: networkResourceGroup,
 		PublicLoadBalancer:   publicLB,
-	}, nil
+	}
+
+	if platform.Image != nil {
+		if platform.Image.ResourceID != "" {
+			spec.Image = azureprovider.Image{
+				ResourceID: platform.Image.ResourceID,
+			}
+		} else {
+			spec.Image = azureprovider.Image{
+				Publisher: platform.Image.Publisher,
+				Offer:     platform.Image.Offer,
+				SKU:       platform.Image.SKU,
+				Version:   platform.Image.Version,
+			}
+		}
+	}
+
+	if platform.ARO {
+		spec.ManagedIdentity = ""
+	}
+
+	return spec, nil
 }
 
 // ConfigMasters sets the PublicIP flag and assigns a set of load balancers to the given machines
