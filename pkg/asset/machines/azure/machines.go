@@ -82,6 +82,8 @@ func Machines(clusterID string, config *types.InstallConfig, pool *types.Machine
 }
 
 func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string, userDataSecret string, clusterID string, role string, azIdx *int, capabilities map[string]string) (*machineapi.AzureMachineProviderSpec, error) {
+	var image machineapi.Image
+
 	var az *string
 	if len(mpool.Zones) > 0 && azIdx != nil {
 		az = &mpool.Zones[*azIdx]
@@ -102,7 +104,6 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 	}
 	rg := platform.ClusterResourceGroupName(clusterID)
 
-	var image machineapi.Image
 	if mpool.OSImage.Publisher != "" {
 		image.Type = machineapi.AzureImageTypeMarketplaceWithPlan
 		image.Publisher = mpool.OSImage.Publisher
@@ -115,6 +116,25 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 			imageID += "-gen2"
 		}
 		image.ResourceID = imageID
+	}
+
+	if platform.Image != nil {
+		if platform.Image.ResourceID != "" {
+			image = machineapi.Image{
+				ResourceID: platform.Image.ResourceID,
+			}
+		} else {
+			image = machineapi.Image{
+				Publisher: platform.Image.Publisher,
+				Offer:     platform.Image.Offer,
+				SKU:       platform.Image.SKU,
+				Version:   platform.Image.Version,
+			}
+		}
+	} else {
+		image = machineapi.Image{
+			ResourceID: fmt.Sprintf("/resourceGroups/%s/providers/Microsoft.Compute/images/%s", rg, clusterID),
+		}
 	}
 
 	networkResourceGroup, virtualNetwork, subnet, err := getNetworkInfo(platform, clusterID, role)
