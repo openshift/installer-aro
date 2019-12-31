@@ -219,6 +219,7 @@ func (o *Openshift) Generate(dependencies asset.Parents) error {
 	}
 
 	if platform == azuretypes.Name &&
+		!installConfig.Config.Azure.ARO &&
 		installConfig.Config.Publish == types.InternalPublishingStrategy &&
 		installConfig.Config.Azure.OutboundType == azuretypes.LoadbalancerOutboundType {
 		privateClusterOutbound := &openshift.PrivateClusterOutbound{}
