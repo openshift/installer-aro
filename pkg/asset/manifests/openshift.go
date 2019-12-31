@@ -215,7 +215,7 @@ func (o *Openshift) Generate(dependencies asset.Parents) error {
 		assetData["99_baremetal-provisioning-config.yaml"] = applyTemplateData(baremetalConfig.Files()[0].Data, bmTemplateData)
 	}
 
-	if platform == azuretypes.Name && installConfig.Config.Publish == types.InternalPublishingStrategy {
+	if platform == azuretypes.Name && !installConfig.Config.Azure.ARO && installConfig.Config.Publish == types.InternalPublishingStrategy {
 		privateClusterOutbound := &openshift.PrivateClusterOutbound{}
 		dependencies.Get(privateClusterOutbound)
 		assetData["99_private-cluster-outbound-service.yaml"] = applyTemplateData(privateClusterOutbound.Files()[0].Data, templateData)
