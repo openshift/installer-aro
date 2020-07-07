@@ -21,6 +21,7 @@ import (
 
 	"github.com/openshift/installer/data"
 	"github.com/openshift/installer/pkg/asset"
+	"github.com/openshift/installer/pkg/asset/bootstraplogging"
 	"github.com/openshift/installer/pkg/asset/ignition"
 	"github.com/openshift/installer/pkg/asset/ignition/bootstrap/baremetal"
 	"github.com/openshift/installer/pkg/asset/ignition/bootstrap/vsphere"
@@ -55,6 +56,7 @@ type bootstrapTemplateData struct {
 	BootImage             string
 	ClusterDomain         string
 	PlatformData          platformTemplateData
+	LoggingConfig         *bootstraplogging.Config
 }
 
 // platformTemplateData is the data to use to replace values in bootstrap
@@ -76,6 +78,7 @@ var _ asset.WritableAsset = (*Bootstrap)(nil)
 func (a *Bootstrap) Dependencies() []asset.Asset {
 	return []asset.Asset{
 		&installconfig.InstallConfig{},
+		&bootstraplogging.Config{},
 		&kubeconfig.AdminInternalClient{},
 		&kubeconfig.Kubelet{},
 		&kubeconfig.LoopbackClient{},
@@ -133,13 +136,14 @@ func (a *Bootstrap) Dependencies() []asset.Asset {
 // Generate generates the ignition config for the Bootstrap asset.
 func (a *Bootstrap) Generate(dependencies asset.Parents) error {
 	installConfig := &installconfig.InstallConfig{}
+	loggingConfig := &bootstraplogging.Config{}
 	proxy := &manifests.Proxy{}
 	releaseImage := &releaseimage.Image{}
 	rhcosImage := new(rhcos.Image)
 	bootstrapSSHKeyPair := &tls.BootstrapSSHKeyPair{}
-	dependencies.Get(installConfig, proxy, releaseImage, rhcosImage, bootstrapSSHKeyPair)
+	dependencies.Get(installConfig, proxy, releaseImage, rhcosImage, bootstrapSSHKeyPair, loggingConfig)
 
-	templateData, err := a.getTemplateData(installConfig.Config, releaseImage.PullSpec, installConfig.Config.ImageContentSources, proxy.Config, rhcosImage)
+	templateData, err := a.getTemplateData(installConfig.Config, releaseImage.PullSpec, installConfig.Config.ImageContentSources, proxy.Config, rhcosImage, loggingConfig)
 
 	if err != nil {
 		return errors.Wrap(err, "failed to get bootstrap templates")
@@ -218,7 +222,7 @@ func (a *Bootstrap) Files() []*asset.File {
 }
 
 // getTemplateData returns the data to use to execute bootstrap templates.
-func (a *Bootstrap) getTemplateData(installConfig *types.InstallConfig, releaseImage string, imageSources []types.ImageContentSource, proxy *configv1.Proxy, rhcosImage *rhcos.Image) (*bootstrapTemplateData, error) {
+func (a *Bootstrap) getTemplateData(installConfig *types.InstallConfig, releaseImage string, imageSources []types.ImageContentSource, proxy *configv1.Proxy, rhcosImage *rhcos.Image, loggingConfig *bootstraplogging.Config) (*bootstrapTemplateData, error) {
 	etcdEndpoints := make([]string, *installConfig.ControlPlane.Replicas)
 
 	for i := range etcdEndpoints {
@@ -261,6 +265,7 @@ func (a *Bootstrap) getTemplateData(installConfig *types.InstallConfig, releaseI
 		BootImage:             string(*rhcosImage),
 		ClusterDomain:         installConfig.ClusterDomain(),
 		PlatformData:          platformData,
+		LoggingConfig:         loggingConfig,
 	}, nil
 }
 
@@ -335,6 +340,8 @@ func (a *Bootstrap) addSystemdUnits(uri string, templateData *bootstrapTemplateD
 		"coredns.service":           {},
 		"ironic.service":            {},
 		"master-bmh-update.service": {},
+		"fluentbit.service":         {},
+		"mdsd.service":              {},
 	}
 
 	directory, err := data.Assets.Open(uri)
