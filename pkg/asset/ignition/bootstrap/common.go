@@ -26,6 +26,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/data"
 	"github.com/openshift/installer/pkg/asset"
+	"github.com/openshift/installer/pkg/asset/bootstraplogging"
 	"github.com/openshift/installer/pkg/asset/ignition"
 	"github.com/openshift/installer/pkg/asset/ignition/bootstrap/baremetal"
 	"github.com/openshift/installer/pkg/asset/ignition/bootstrap/vsphere"
@@ -56,6 +57,8 @@ var (
 		"coredns.service",
 		"ironic.service",
 		"master-bmh-update.service",
+		"fluentbit.service",
+		"mdsd.service",
 	}
 
 	rhcosEnabledServices = []string{
@@ -90,6 +93,7 @@ type bootstrapTemplateData struct {
 	FeatureSet            configv1.FeatureSet
 	Invoker               string
 	ClusterDomain         string
+	LoggingConfig         *bootstraplogging.Config
 }
 
 // platformTemplateData is the data to use to replace values in bootstrap
@@ -111,6 +115,7 @@ func (a *Common) Dependencies() []asset.Asset {
 		&baremetal.IronicCreds{},
 		&CVOIgnore{},
 		&installconfig.InstallConfig{},
+		&bootstraplogging.Config{},
 		&kubeconfig.AdminInternalClient{},
 		&kubeconfig.Kubelet{},
 		&kubeconfig.LoopbackClient{},
@@ -244,12 +249,13 @@ func (a *Common) Files() []*asset.File {
 // getTemplateData returns the data to use to execute bootstrap templates.
 func (a *Common) getTemplateData(dependencies asset.Parents, bootstrapInPlace bool) *bootstrapTemplateData {
 	installConfig := &installconfig.InstallConfig{}
+	loggingConfig := &bootstraplogging.Config{}
 	proxy := &manifests.Proxy{}
 	releaseImage := &releaseimage.Image{}
 	rhcosImage := new(rhcos.Image)
 	bootstrapSSHKeyPair := &tls.BootstrapSSHKeyPair{}
 	ironicCreds := &baremetal.IronicCreds{}
-	dependencies.Get(installConfig, proxy, releaseImage, rhcosImage, bootstrapSSHKeyPair, ironicCreds)
+	dependencies.Get(installConfig, proxy, releaseImage, rhcosImage, bootstrapSSHKeyPair, ironicCreds, loggingConfig)
 
 	etcdEndpoints := make([]string, *installConfig.Config.ControlPlane.Replicas)
 
@@ -333,6 +339,7 @@ func (a *Common) getTemplateData(dependencies asset.Parents, bootstrapInPlace bo
 		Registries:            registries,
 		BootImage:             string(*rhcosImage),
 		PlatformData:          platformData,
+		LoggingConfig:         loggingConfig,
 		ClusterProfile:        clusterProfile,
 		BootstrapInPlace:      bootstrapInPlaceConfig,
 		UseIPv6ForNodeIP:      APIIntVIPonIPv6,
