@@ -191,13 +191,25 @@ func (w *Worker) Generate(dependencies asset.Parents) error {
 	ic := installConfig.Config
 	for _, pool := range ic.Compute {
 		if pool.Hyperthreading == types.HyperthreadingDisabled {
-			machineConfigs = append(machineConfigs, machineconfig.ForHyperthreadingDisabled("worker"))
+			config, err := machineconfig.ForHyperthreadingDisabled("worker")
+			if err != nil {
+				return errors.Wrap(err, "failed to create worker machine objects")
+			}
+			machineConfigs = append(machineConfigs, config)
 		}
 		if ic.SSHKey != "" {
-			machineConfigs = append(machineConfigs, machineconfig.ForAuthorizedKeys(ic.SSHKey, "worker"))
+			config, err := machineconfig.ForAuthorizedKeys(ic.SSHKey, "worker")
+			if err != nil {
+				return errors.Wrap(err, "failed to create worker machine objects")
+			}
+			machineConfigs = append(machineConfigs, config)
 		}
 		if ic.FIPS {
-			machineConfigs = append(machineConfigs, machineconfig.ForFIPSEnabled("worker"))
+			config, err := machineconfig.ForFIPSEnabled("worker")
+			if err != nil {
+				return errors.Wrap(err, "failed to create worker machine objects")
+			}
+			machineConfigs = append(machineConfigs, config)
 		}
 		switch ic.Platform.Name() {
 		case awstypes.Name:

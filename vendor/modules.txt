@@ -396,13 +396,7 @@ github.com/coreos/go-systemd/unit
 github.com/coreos/ignition/config/shared/errors
 github.com/coreos/ignition/config/shared/validations
 github.com/coreos/ignition/config/util
-github.com/coreos/ignition/config/v1
-github.com/coreos/ignition/config/v1/types
-github.com/coreos/ignition/config/v2_0
-github.com/coreos/ignition/config/v2_0/types
-github.com/coreos/ignition/config/v2_1
 github.com/coreos/ignition/config/v2_1/types
-github.com/coreos/ignition/config/v2_2
 github.com/coreos/ignition/config/v2_2/types
 github.com/coreos/ignition/config/v2_4/types
 github.com/coreos/ignition/config/v2_5_experimental/types
@@ -975,7 +969,7 @@ github.com/openshift/machine-api-operator/pkg/apis/machine
 github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1
 github.com/openshift/machine-api-operator/pkg/apis/vsphereprovider
 github.com/openshift/machine-api-operator/pkg/apis/vsphereprovider/v1beta1
-# github.com/openshift/machine-config-operator v4.2.0-alpha.0.0.20190917115525-033375cbe820+incompatible => github.com/openshift/machine-config-operator v0.0.1-0.20200130220348-e5685c0cf530
+# github.com/openshift/machine-config-operator v4.2.0-alpha.0.0.20190917115525-033375cbe820+incompatible => github.com/openshift/machine-config-operator v0.0.0-20200904000724-41d29dde06d6
 github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1
 # github.com/ovirt/go-ovirt v0.0.0-20200613023950-320a86f9df27
 github.com/ovirt/go-ovirt
@@ -1433,7 +1427,7 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go4.org v0.0.0-20191010144846-132d2879e1e9
+# go4.org v0.0.0-20200104003542-c7e774b10ea0
 go4.org/errorutil
 # golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
 golang.org/x/crypto/bcrypt
@@ -1703,7 +1697,7 @@ honnef.co/go/tools/staticcheck/vrp
 honnef.co/go/tools/stylecheck
 honnef.co/go/tools/unused
 honnef.co/go/tools/version
-# k8s.io/api v0.18.2 => k8s.io/api v0.17.1
+# k8s.io/api v0.18.3 => k8s.io/api v0.18.3
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/apps/v1
@@ -1744,11 +1738,11 @@ k8s.io/api/settings/v1alpha1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apiextensions-apiserver v0.18.2 => k8s.io/apiextensions-apiserver v0.17.1
+# k8s.io/apiextensions-apiserver v0.18.2 => k8s.io/apiextensions-apiserver v0.18.3
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
-# k8s.io/apimachinery v0.18.2 => k8s.io/apimachinery v0.17.1
+# k8s.io/apimachinery v0.18.3 => k8s.io/apimachinery v0.18.3
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
@@ -1791,7 +1785,7 @@ k8s.io/apimachinery/pkg/util/yaml
 k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v12.0.0+incompatible => k8s.io/client-go v0.17.1
+# k8s.io/client-go v12.0.0+incompatible => k8s.io/client-go v0.18.3
 k8s.io/client-go/discovery
 k8s.io/client-go/kubernetes
 k8s.io/client-go/kubernetes/scheme
@@ -1858,10 +1852,10 @@ k8s.io/client-go/util/connrotation
 k8s.io/client-go/util/flowcontrol
 k8s.io/client-go/util/homedir
 k8s.io/client-go/util/keyutil
-k8s.io/client-go/util/retry
+k8s.io/client-go/util/workqueue
 # k8s.io/klog v1.0.0
 k8s.io/klog
-# k8s.io/kube-openapi v0.0.0-20191107075043-30be4d16710a
+# k8s.io/kube-openapi v0.0.0-20200410145947-61e04a5be9a6
 k8s.io/kube-openapi/pkg/common
 # k8s.io/utils v0.0.0-20200327001022-6496210b90e8
 k8s.io/utils/buffer
@@ -1895,5 +1889,7 @@ sigs.k8s.io/controller-tools/pkg/schemapatcher
 sigs.k8s.io/controller-tools/pkg/schemapatcher/internal/yaml
 sigs.k8s.io/controller-tools/pkg/version
 sigs.k8s.io/controller-tools/pkg/webhook
+# sigs.k8s.io/structured-merge-diff/v3 v3.0.0
+sigs.k8s.io/structured-merge-diff/v3/value
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
