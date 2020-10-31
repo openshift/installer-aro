@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/ghodss/yaml"
-	baremetalapi "github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis"
-	baremetalprovider "github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis/baremetal/v1alpha1"
+	baremetalapi "github.com/openshift/cluster-api-provider-baremetal/pkg/apis"
+	baremetalprovider "github.com/openshift/cluster-api-provider-baremetal/pkg/apis/baremetal/v1alpha1"
 	gcpapi "github.com/openshift/cluster-api-provider-gcp/pkg/apis"
 	gcpprovider "github.com/openshift/cluster-api-provider-gcp/pkg/apis/gcpprovider/v1beta1"
 	libvirtapi "github.com/openshift/cluster-api-provider-libvirt/pkg/apis"
@@ -362,13 +362,25 @@ func (m *Master) Generate(dependencies asset.Parents) error {
 
 	machineConfigs := []*mcfgv1.MachineConfig{}
 	if pool.Hyperthreading == types.HyperthreadingDisabled {
-		machineConfigs = append(machineConfigs, machineconfig.ForHyperthreadingDisabled("master"))
+		config, err := machineconfig.ForHyperthreadingDisabled("master")
+		if err != nil {
+			return errors.Wrap(err, "failed to create master machine objects")
+		}
+		machineConfigs = append(machineConfigs, config)
 	}
 	if ic.SSHKey != "" {
-		machineConfigs = append(machineConfigs, machineconfig.ForAuthorizedKeys(ic.SSHKey, "master"))
+		config, err := machineconfig.ForAuthorizedKeys(ic.SSHKey, "master")
+		if err != nil {
+			return errors.Wrap(err, "failed to create master machine objects")
+		}
+		machineConfigs = append(machineConfigs, config)
 	}
 	if ic.FIPS {
-		machineConfigs = append(machineConfigs, machineconfig.ForFIPSEnabled("master"))
+		config, err := machineconfig.ForFIPSEnabled("master")
+		if err != nil {
+			return errors.Wrap(err, "failed to create master machine objects")
+		}
+		machineConfigs = append(machineConfigs, config)
 	}
 
 	m.MachineConfigFiles, err = machineconfig.Manifests(machineConfigs, "master", directory)
