@@ -78,7 +78,7 @@ func New(logger logrus.FieldLogger, metadata *types.ClusterMetadata) (providers.
 	if cloudName == "" {
 		cloudName = azure.PublicCloud
 	}
-	session, err := azuresession.GetSession(cloudName)
+	session, err := azuresession.GetSession(cloudName, nil)
 	if err != nil {
 		return nil, err
 	}
