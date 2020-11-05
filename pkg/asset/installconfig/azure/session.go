@@ -42,7 +42,15 @@ type Credentials struct {
 
 // GetSession returns an azure session by using credentials found in ~/.azure/osServicePrincipal.json
 // and, if no creds are found, asks for them and stores them on disk in a config file
-func GetSession(cloudName azure.CloudEnvironment) (*Session, error) {
+func GetSession(cloudName azure.CloudEnvironment, credentials *Credentials) (*Session, error) {
+	if credentials != nil {
+		env, err := azureenv.EnvironmentFromName(string(cloudName))
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get Azure environment for the %q cloud", cloudName)
+		}
+		return newSessionFromCredentials(env, credentials)
+	}
+
 	authFile := defaultAuthFilePath
 	if f := os.Getenv(azureAuthEnv); len(f) > 0 {
 		authFile = f
@@ -91,12 +99,32 @@ func newSessionFromFile(authFilePath string, cloudName azure.CloudEnvironment) (
 		logrus.Infof("Credentials loaded from file %q", authFilePath)
 	})
 
-	authorizer, err := authSettings.ClientCredentialsAuthorizerWithResource(env.ResourceManagerEndpoint)
+	return newSessionFromCredentials(env, credentials)
+}
+
+func newSessionFromCredentials(env azureenv.Environment, credentials *Credentials) (*Session, error) {
+	c := &auth.ClientCredentialsConfig{
+		TenantID:     credentials.TenantID,
+		ClientID:     credentials.ClientID,
+		ClientSecret: credentials.ClientSecret,
+		AADEndpoint:  env.ActiveDirectoryEndpoint,
+		Resource:     env.ResourceManagerEndpoint,
+	}
+
+	authorizer, err := c.Authorizer()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get client credentials authorizer from saved azure auth settings")
 	}
 
-	graphAuthorizer, err := authSettings.ClientCredentialsAuthorizerWithResource(env.GraphEndpoint)
+	c = &auth.ClientCredentialsConfig{
+		TenantID:     credentials.TenantID,
+		ClientID:     credentials.ClientID,
+		ClientSecret: credentials.ClientSecret,
+		AADEndpoint:  env.ActiveDirectoryEndpoint,
+		Resource:     env.GraphEndpoint,
+	}
+
+	graphAuthorizer, err := c.Authorizer()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get GraphEndpoint authorizer from saved azure auth settings")
 	}
