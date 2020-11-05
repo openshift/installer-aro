@@ -12,9 +12,10 @@ import (
 // does not need to be user-supplied (e.g. because it can be retrieved
 // from external APIs).
 type Metadata struct {
-	session *Session
-	client  *Client
-	dnsCfg  *DNSConfig
+	session       *Session
+	platformCreds *Credentials
+	client        *Client
+	dnsCfg        *DNSConfig
 
 	// CloudName indicates the Azure cloud environment (e.g. public, gov't).
 	CloudName typesazure.CloudEnvironment `json:"cloudName,omitempty"`
@@ -23,8 +24,8 @@ type Metadata struct {
 }
 
 // NewMetadata initializes a new Metadata object.
-func NewMetadata(cloudName typesazure.CloudEnvironment) *Metadata {
-	return &Metadata{CloudName: cloudName}
+func NewMetadata(cloudName typesazure.CloudEnvironment, creds *Credentials) *Metadata {
+	return &Metadata{CloudName: cloudName, platformCreds: creds}
 }
 
 // Session holds an Azure session which can be used for Azure API calls
@@ -39,7 +40,7 @@ func (m *Metadata) Session() (*Session, error) {
 func (m *Metadata) unlockedSession() (*Session, error) {
 	if m.session == nil {
 		var err error
-		m.session, err = GetSession(m.CloudName)
+		m.session, err = GetSession(m.CloudName, m.platformCreds)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating Azure session")
 		}
