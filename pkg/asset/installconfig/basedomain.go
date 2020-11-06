@@ -1,17 +1,11 @@
 package installconfig
 
 import (
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/pkg/errors"
 	survey "gopkg.in/AlecAivazis/survey.v1"
 
 	"github.com/openshift/installer/pkg/asset"
-	awsconfig "github.com/openshift/installer/pkg/asset/installconfig/aws"
 	azureconfig "github.com/openshift/installer/pkg/asset/installconfig/azure"
-	gcpconfig "github.com/openshift/installer/pkg/asset/installconfig/gcp"
-	"github.com/openshift/installer/pkg/types/aws"
 	"github.com/openshift/installer/pkg/types/azure"
-	"github.com/openshift/installer/pkg/types/gcp"
 	"github.com/openshift/installer/pkg/validate"
 )
 
@@ -33,14 +27,7 @@ func (a *baseDomain) Generate(parents asset.Parents) error {
 	platform := &platform{}
 	parents.Get(platform)
 
-	var err error
 	switch platform.CurrentName() {
-	case aws.Name:
-		a.BaseDomain, err = awsconfig.GetBaseDomain()
-		cause := errors.Cause(err)
-		if !(awsconfig.IsForbidden(cause) || request.IsErrorThrottle(cause)) {
-			return err
-		}
 	case azure.Name:
 		// Create client using public cloud because install config has not been generated yet.
 		ssn, err := azureconfig.GetSession(azure.PublicCloud, nil)
@@ -54,13 +41,6 @@ func (a *baseDomain) Generate(parents asset.Parents) error {
 		}
 		a.BaseDomain = zone.Name
 		return platform.Azure.SetBaseDomain(zone.ID)
-	case gcp.Name:
-		a.BaseDomain, err = gcpconfig.GetBaseDomain(platform.GCP.ProjectID)
-
-		// We are done if success (err == nil) or an err besides forbidden/throttling
-		if !(gcpconfig.IsForbidden(err) || gcpconfig.IsThrottled(err)) {
-			return err
-		}
 	default:
 		//Do nothing
 	}

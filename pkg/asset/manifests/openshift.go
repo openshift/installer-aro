@@ -1,35 +1,20 @@
 package manifests
 
 import (
-	"context"
 	"encoding/base64"
 	"path/filepath"
-	"strconv"
 
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/ghodss/yaml"
-	"github.com/gophercloud/utils/openstack/clientconfig"
 	"github.com/pkg/errors"
 
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
-	"github.com/openshift/installer/pkg/asset/installconfig/gcp"
-	"github.com/openshift/installer/pkg/asset/installconfig/ovirt"
 	"github.com/openshift/installer/pkg/asset/machines"
-	osmachine "github.com/openshift/installer/pkg/asset/machines/openstack"
-	openstackmanifests "github.com/openshift/installer/pkg/asset/manifests/openstack"
 	"github.com/openshift/installer/pkg/asset/openshiftinstall"
 	"github.com/openshift/installer/pkg/asset/password"
 	"github.com/openshift/installer/pkg/asset/rhcos"
 	"github.com/openshift/installer/pkg/asset/templates/content/openshift"
 	"github.com/openshift/installer/pkg/types"
-	awstypes "github.com/openshift/installer/pkg/types/aws"
 	azuretypes "github.com/openshift/installer/pkg/types/azure"
-	baremetaltypes "github.com/openshift/installer/pkg/types/baremetal"
-	gcptypes "github.com/openshift/installer/pkg/types/gcp"
-	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
-	ovirttypes "github.com/openshift/installer/pkg/types/ovirt"
-	vspheretypes "github.com/openshift/installer/pkg/types/vsphere"
 )
 
 const (
@@ -78,21 +63,6 @@ func (o *Openshift) Generate(dependencies asset.Parents) error {
 	var cloudCreds cloudCredsSecretData
 	platform := installConfig.Config.Platform.Name()
 	switch platform {
-	case awstypes.Name:
-		ssn := session.Must(session.NewSessionWithOptions(session.Options{
-			SharedConfigState: session.SharedConfigEnable,
-		}))
-		creds, err := ssn.Config.Credentials.Get()
-		if err != nil {
-			return err
-		}
-		cloudCreds = cloudCredsSecretData{
-			AWS: &AwsCredsSecretData{
-				Base64encodeAccessKeyID:     base64.StdEncoding.EncodeToString([]byte(creds.AccessKeyID)),
-				Base64encodeSecretAccessKey: base64.StdEncoding.EncodeToString([]byte(creds.SecretAccessKey)),
-			},
-		}
-
 	case azuretypes.Name:
 		resourceGroupName := installConfig.Config.Azure.ClusterResourceGroupName(clusterID.InfraID)
 		session, err := installConfig.Azure.Session()
@@ -109,77 +79,6 @@ func (o *Openshift) Generate(dependencies asset.Parents) error {
 				Base64encodeResourcePrefix: base64.StdEncoding.EncodeToString([]byte(clusterID.InfraID)),
 				Base64encodeResourceGroup:  base64.StdEncoding.EncodeToString([]byte(resourceGroupName)),
 				Base64encodeRegion:         base64.StdEncoding.EncodeToString([]byte(installConfig.Config.Azure.Region)),
-			},
-		}
-	case gcptypes.Name:
-		session, err := gcp.GetSession(context.TODO())
-		if err != nil {
-			return err
-		}
-		creds := session.Credentials.JSON
-		cloudCreds = cloudCredsSecretData{
-			GCP: &GCPCredsSecretData{
-				Base64encodeServiceAccount: base64.StdEncoding.EncodeToString(creds),
-			},
-		}
-	case openstacktypes.Name:
-		opts := new(clientconfig.ClientOpts)
-		opts.Cloud = installConfig.Config.Platform.OpenStack.Cloud
-		cloud, err := clientconfig.GetCloudFromYAML(opts)
-		if err != nil {
-			return err
-		}
-
-		// We need to replace the local cacert path with one that is used in OpenShift
-		if cloud.CACertFile != "" {
-			cloud.CACertFile = "/etc/kubernetes/static-pod-resources/configmaps/cloud-config/ca-bundle.pem"
-		}
-
-		clouds := make(map[string]map[string]*clientconfig.Cloud)
-		clouds["clouds"] = map[string]*clientconfig.Cloud{
-			osmachine.CloudName: cloud,
-		}
-
-		marshalled, err := yaml.Marshal(clouds)
-		if err != nil {
-			return err
-		}
-
-		cloudProviderConf, err := openstackmanifests.CloudProviderConfigSecret(cloud)
-		if err != nil {
-			return err
-		}
-
-		credsEncoded := base64.StdEncoding.EncodeToString(marshalled)
-		credsINIEncoded := base64.StdEncoding.EncodeToString(cloudProviderConf)
-		cloudCreds = cloudCredsSecretData{
-			OpenStack: &OpenStackCredsSecretData{
-				Base64encodeCloudCreds:    credsEncoded,
-				Base64encodeCloudCredsINI: credsINIEncoded,
-			},
-		}
-	case vspheretypes.Name:
-		cloudCreds = cloudCredsSecretData{
-			VSphere: &VSphereCredsSecretData{
-				VCenter:              installConfig.Config.VSphere.VCenter,
-				Base64encodeUsername: base64.StdEncoding.EncodeToString([]byte(installConfig.Config.VSphere.Username)),
-				Base64encodePassword: base64.StdEncoding.EncodeToString([]byte(installConfig.Config.VSphere.Password)),
-			},
-		}
-	case ovirttypes.Name:
-		conf, err := ovirt.NewConfig()
-		if err != nil {
-			return err
-		}
-
-		cloudCreds = cloudCredsSecretData{
-			Ovirt: &OvirtCredsSecretData{
-				Base64encodeURL:      base64.StdEncoding.EncodeToString([]byte(conf.URL)),
-				Base64encodeUsername: base64.StdEncoding.EncodeToString([]byte(conf.Username)),
-				Base64encodePassword: base64.StdEncoding.EncodeToString([]byte(conf.Password)),
-				Base64encodeCAFile:   base64.StdEncoding.EncodeToString([]byte(conf.CAFile)),
-				Base64encodeInsecure: base64.StdEncoding.EncodeToString([]byte(strconv.FormatBool(conf.Insecure))),
-				Base64encodeCABundle: base64.StdEncoding.EncodeToString([]byte(conf.CABundle)),
 			},
 		}
 	}
@@ -207,15 +106,9 @@ func (o *Openshift) Generate(dependencies asset.Parents) error {
 	}
 
 	switch platform {
-	case awstypes.Name, openstacktypes.Name, vspheretypes.Name, azuretypes.Name, gcptypes.Name, ovirttypes.Name:
+	case azuretypes.Name:
 		assetData["99_cloud-creds-secret.yaml"] = applyTemplateData(cloudCredsSecret.Files()[0].Data, templateData)
 		assetData["99_role-cloud-creds-secret-reader.yaml"] = applyTemplateData(roleCloudCredsSecretReader.Files()[0].Data, templateData)
-	case baremetaltypes.Name:
-		bmTemplateData := baremetalTemplateData{
-			Baremetal:                 installConfig.Config.Platform.BareMetal,
-			ProvisioningOSDownloadURL: string(*rhcosImage),
-		}
-		assetData["99_baremetal-provisioning-config.yaml"] = applyTemplateData(baremetalConfig.Files()[0].Data, bmTemplateData)
 	}
 
 	if platform == azuretypes.Name &&
