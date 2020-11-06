@@ -81,6 +81,7 @@ func Machines(clusterID string, config *types.InstallConfig, pool *types.Machine
 
 func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string, userDataSecret string, clusterID string, role string, azIdx *int) (*azureprovider.AzureMachineProviderSpec, error) {
 	var az *string
+	var managedIdentity string
 	if len(mpool.Zones) > 0 && azIdx != nil {
 		az = &mpool.Zones[*azIdx]
 	}
@@ -99,6 +100,12 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 	publicLB := clusterID
 	if platform.OutboundType == azure.UserDefinedRoutingOutboundType {
 		publicLB = ""
+	}
+
+	if platform.ARO {
+		managedIdentity = ""
+	} else {
+		managedIdentity = fmt.Sprintf("%s-identity", clusterID)
 	}
 
 	return &azureprovider.AzureMachineProviderSpec{
@@ -122,7 +129,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		},
 		Zone:                 az,
 		Subnet:               subnet,
-		ManagedIdentity:      fmt.Sprintf("%s-identity", clusterID),
+		ManagedIdentity:      managedIdentity,
 		Vnet:                 virtualNetwork,
 		ResourceGroup:        rg,
 		NetworkResourceGroup: networkResourceGroup,

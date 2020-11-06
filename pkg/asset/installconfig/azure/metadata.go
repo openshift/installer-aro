@@ -28,6 +28,10 @@ func NewMetadata(cloudName typesazure.CloudEnvironment, creds *Credentials) *Met
 	return &Metadata{CloudName: cloudName, platformCreds: creds}
 }
 
+func (m *Metadata) GetPlatformCredentials() *Credentials {
+	return m.platformCreds
+}
+
 // Session holds an Azure session which can be used for Azure API calls
 // during asset generation.
 func (m *Metadata) Session() (*Session, error) {
