@@ -79,6 +79,7 @@ type bootkubeTemplateData struct {
 	RootCaCert                 string
 	WorkerIgnConfig            string
 	IsOKD                      bool
+	AROWorkerRegistries        string
 }
 
 type baremetalTemplateData struct {
