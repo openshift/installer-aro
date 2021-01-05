@@ -75,6 +75,9 @@ type Platform struct {
 	//
 	// +optional
 	ResourceGroupName string `json:"resourceGroupName,omitempty"`
+
+	// ARO is a flag that indicates specialisations for the ARO platform
+	ARO bool `json:"aro,omitempty"`
 }
 
 // CloudEnvironment is the name of the Azure cloud environment
