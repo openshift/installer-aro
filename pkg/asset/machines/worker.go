@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/ghodss/yaml"
-	baremetalapi "github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis"
-	baremetalprovider "github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis/baremetal/v1alpha1"
 	gcpapi "github.com/openshift/cluster-api-provider-gcp/pkg/apis"
 	gcpprovider "github.com/openshift/cluster-api-provider-gcp/pkg/apis/gcpprovider/v1beta1"
 	libvirtapi "github.com/openshift/cluster-api-provider-libvirt/pkg/apis"
@@ -466,7 +464,6 @@ func (w *Worker) MachineSets() ([]machineapi.MachineSet, error) {
 	scheme := runtime.NewScheme()
 	awsapi.AddToScheme(scheme)
 	azureapi.AddToScheme(scheme)
-	baremetalapi.AddToScheme(scheme)
 	gcpapi.AddToScheme(scheme)
 	libvirtapi.AddToScheme(scheme)
 	openstackapi.AddToScheme(scheme)
@@ -475,7 +472,6 @@ func (w *Worker) MachineSets() ([]machineapi.MachineSet, error) {
 	decoder := serializer.NewCodecFactory(scheme).UniversalDecoder(
 		awsprovider.SchemeGroupVersion,
 		azureprovider.SchemeGroupVersion,
-		baremetalprovider.SchemeGroupVersion,
 		gcpprovider.SchemeGroupVersion,
 		libvirtprovider.SchemeGroupVersion,
 		openstackprovider.SchemeGroupVersion,

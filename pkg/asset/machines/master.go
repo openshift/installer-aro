@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/ghodss/yaml"
-	baremetalapi "github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis"
-	baremetalprovider "github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis/baremetal/v1alpha1"
 	gcpapi "github.com/openshift/cluster-api-provider-gcp/pkg/apis"
 	gcpprovider "github.com/openshift/cluster-api-provider-gcp/pkg/apis/gcpprovider/v1beta1"
 	libvirtapi "github.com/openshift/cluster-api-provider-libvirt/pkg/apis"
@@ -36,7 +34,6 @@ import (
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	"github.com/openshift/installer/pkg/asset/machines/aws"
 	"github.com/openshift/installer/pkg/asset/machines/azure"
-	"github.com/openshift/installer/pkg/asset/machines/baremetal"
 	"github.com/openshift/installer/pkg/asset/machines/gcp"
 	"github.com/openshift/installer/pkg/asset/machines/libvirt"
 	"github.com/openshift/installer/pkg/asset/machines/machineconfig"
@@ -50,7 +47,6 @@ import (
 	awsdefaults "github.com/openshift/installer/pkg/types/aws/defaults"
 	azuretypes "github.com/openshift/installer/pkg/types/azure"
 	azuredefaults "github.com/openshift/installer/pkg/types/azure/defaults"
-	baremetaltypes "github.com/openshift/installer/pkg/types/baremetal"
 	gcptypes "github.com/openshift/installer/pkg/types/gcp"
 	libvirttypes "github.com/openshift/installer/pkg/types/libvirt"
 	nonetypes "github.com/openshift/installer/pkg/types/none"
@@ -273,55 +269,6 @@ func (m *Master) Generate(dependencies asset.Parents) error {
 			return errors.Wrap(err, "failed to create master machine objects")
 		}
 		azure.ConfigMasters(machines, clusterID.InfraID)
-	case baremetaltypes.Name:
-		mpool := defaultBareMetalMachinePoolPlatform()
-		mpool.Set(ic.Platform.BareMetal.DefaultMachinePlatform)
-		mpool.Set(pool.Platform.BareMetal)
-		pool.Platform.BareMetal = &mpool
-
-		machines, err = baremetal.Machines(clusterID.InfraID, ic, pool, string(*rhcosImage), "master", "master-user-data")
-		if err != nil {
-			return errors.Wrap(err, "failed to create master machine objects")
-		}
-
-		hostSettings, err := baremetal.Hosts(ic, machines)
-		if err != nil {
-			return errors.Wrap(err, "failed to assemble host data")
-		}
-
-		if len(hostSettings.Hosts) > 0 {
-			m.HostFiles = make([]*asset.File, len(hostSettings.Hosts))
-			padFormat := fmt.Sprintf("%%0%dd", len(fmt.Sprintf("%d", len(hostSettings.Hosts))))
-			for i, host := range hostSettings.Hosts {
-				data, err := yaml.Marshal(host)
-				if err != nil {
-					return errors.Wrapf(err, "marshal host %d", i)
-				}
-
-				padded := fmt.Sprintf(padFormat, i)
-				m.HostFiles[i] = &asset.File{
-					Filename: filepath.Join(directory, fmt.Sprintf(hostFileName, padded)),
-					Data:     data,
-				}
-			}
-		}
-
-		if len(hostSettings.Secrets) > 0 {
-			m.SecretFiles = make([]*asset.File, len(hostSettings.Secrets))
-			padFormat := fmt.Sprintf("%%0%dd", len(fmt.Sprintf("%d", len(hostSettings.Secrets))))
-			for i, secret := range hostSettings.Secrets {
-				data, err := yaml.Marshal(secret)
-				if err != nil {
-					return errors.Wrapf(err, "marshal secret %d", i)
-				}
-
-				padded := fmt.Sprintf(padFormat, i)
-				m.SecretFiles[i] = &asset.File{
-					Filename: filepath.Join(directory, fmt.Sprintf(secretFileName, padded)),
-					Data:     data,
-				}
-			}
-		}
 	case ovirttypes.Name:
 		mpool := defaultOvirtMachinePoolPlatform()
 		mpool.VMType = ovirttypes.VMTypeHighPerformance
@@ -471,7 +418,6 @@ func (m *Master) Machines() ([]machineapi.Machine, error) {
 	scheme := runtime.NewScheme()
 	awsapi.AddToScheme(scheme)
 	azureapi.AddToScheme(scheme)
-	baremetalapi.AddToScheme(scheme)
 	gcpapi.AddToScheme(scheme)
 	libvirtapi.AddToScheme(scheme)
 	openstackapi.AddToScheme(scheme)
@@ -480,7 +426,6 @@ func (m *Master) Machines() ([]machineapi.Machine, error) {
 	decoder := serializer.NewCodecFactory(scheme).UniversalDecoder(
 		awsprovider.SchemeGroupVersion,
 		azureprovider.SchemeGroupVersion,
-		baremetalprovider.SchemeGroupVersion,
 		gcpprovider.SchemeGroupVersion,
 		libvirtprovider.SchemeGroupVersion,
 		openstackprovider.SchemeGroupVersion,
