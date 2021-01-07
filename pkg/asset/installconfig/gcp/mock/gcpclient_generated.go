@@ -6,10 +6,11 @@ package mock
 
 import (
 	context "context"
+	reflect "reflect"
+
 	gomock "github.com/golang/mock/gomock"
 	compute "google.golang.org/api/compute/v1"
 	dns "google.golang.org/api/dns/v1"
-	reflect "reflect"
 )
 
 // MockAPI is a mock of API interface.

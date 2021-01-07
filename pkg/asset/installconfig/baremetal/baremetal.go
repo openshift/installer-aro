@@ -3,6 +3,7 @@ package baremetal
 
 import (
 	"fmt"
+
 	"github.com/pkg/errors"
 	"gopkg.in/AlecAivazis/survey.v1"
 	"gopkg.in/AlecAivazis/survey.v1/terminal"

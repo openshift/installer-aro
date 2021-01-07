@@ -4,11 +4,12 @@ package validation
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/libvirt/libvirt-go"
 	"github.com/openshift/installer/pkg/types/baremetal"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"strings"
 )
 
 func init() {

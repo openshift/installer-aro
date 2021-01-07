@@ -2,8 +2,9 @@ package defaults
 
 import (
 	"fmt"
-	"github.com/openshift/installer/pkg/ipnet"
 	"net"
+
+	"github.com/openshift/installer/pkg/ipnet"
 
 	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/openshift/installer/pkg/types"

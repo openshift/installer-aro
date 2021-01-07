@@ -4,6 +4,7 @@ package manifests
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"text/template"
