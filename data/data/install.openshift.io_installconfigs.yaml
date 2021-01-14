@@ -2426,6 +2426,10 @@ spec:
                     description: ARMEndpoint is the endpoint for the Azure API when
                       installing on Azure Stack.
                     type: string
+                  aro:
+                    description: ARO is a flag that indicates specialisations for
+                      the ARO platform.
+                    type: boolean
                   baseDomainResourceGroupName:
                     description: BaseDomainResourceGroupName specifies the resource
                       group where the Azure DNS zone for the base domain is found.
@@ -2706,6 +2710,27 @@ spec:
                         items:
                           type: string
                         type: array
+                    type: object
+                  image:
+                    description: Image specifies the image parameters with which a
+                      cluster should be built
+                    properties:
+                      offer:
+                        description: Offer is the image offer
+                        type: string
+                      publisher:
+                        description: Publisher is the image publisher
+                        type: string
+                      resourceId:
+                        description: ResourceID is the resource ID of an existing
+                          Image resource
+                        type: string
+                      sku:
+                        description: SKU is the image SKU
+                        type: string
+                      version:
+                        description: Version is the image version
+                        type: string
                     type: object
                   networkResourceGroupName:
                     description: NetworkResourceGroupName specifies the network resource
