@@ -18,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	"github.com/openshift/installer/pkg/rhcos"
 	"github.com/openshift/installer/pkg/types"
 	awstypes "github.com/openshift/installer/pkg/types/aws"
 )
@@ -89,11 +88,6 @@ func validatePlatform(ctx context.Context, meta *Metadata, fldPath *field.Path, 
 }
 
 func validateAMI(ctx context.Context, config *types.InstallConfig) field.ErrorList {
-	// accept AMI from the rhcos stream metadata
-	if rhcos.AMIRegions(config.ControlPlane.Architecture).Has(config.Platform.AWS.Region) {
-		return nil
-	}
-
 	// accept AMI specified at the platform level
 	if config.Platform.AWS.AMIID != "" {
 		return nil
