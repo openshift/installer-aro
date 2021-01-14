@@ -197,6 +197,9 @@ func Test_PrintFields(t *testing.T) {
     armEndpoint <string>
       ARMEndpoint is the endpoint for the Azure API when installing on Azure Stack.
 
+    aro <boolean>
+      ARO is a flag that indicates specialisations for the ARO platform.
+
     baseDomainResourceGroupName <string>
       BaseDomainResourceGroupName specifies the resource group where the Azure DNS zone for the base domain is found. This field is optional when creating a private cluster, otherwise required.
 
@@ -215,6 +218,9 @@ func Test_PrintFields(t *testing.T) {
 
     defaultMachinePlatform <object>
       DefaultMachinePlatform is the default configuration used when installing on Azure for machine pools which do not define their own platform configuration.
+
+    image <object>
+      Image specifies the image parameters with which a cluster should be built
 
     networkResourceGroupName <string>
       NetworkResourceGroupName specifies the network resource group that contains an existing VNet
