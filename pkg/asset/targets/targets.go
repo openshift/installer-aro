@@ -71,6 +71,5 @@ var (
 		&kubeconfig.AdminClient{},
 		&password.KubeadminPassword{},
 		&tls.JournalCertKey{},
-		&cluster.Cluster{},
 	}
 )
