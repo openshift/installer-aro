@@ -26,6 +26,7 @@ import (
 	utilsnet "k8s.io/utils/net"
 
 	"github.com/openshift/installer/data"
+	"github.com/openshift/installer/pkg/aro/dnsmasq"
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/bootstraplogging"
 	"github.com/openshift/installer/pkg/asset/ignition"
@@ -38,6 +39,7 @@ import (
 	"github.com/openshift/installer/pkg/asset/manifests"
 	"github.com/openshift/installer/pkg/asset/releaseimage"
 	"github.com/openshift/installer/pkg/asset/rhcos"
+	"github.com/openshift/installer/pkg/asset/templates/content/bootkube"
 	"github.com/openshift/installer/pkg/asset/tls"
 	"github.com/openshift/installer/pkg/types"
 	baremetaltypes "github.com/openshift/installer/pkg/types/baremetal"
@@ -161,6 +163,7 @@ func (a *Common) Dependencies() []asset.Asset {
 		&tls.ServiceAccountKeyPair{},
 		&releaseimage.Image{},
 		new(rhcos.Image),
+		&bootkube.ARODNSConfig{},
 	}
 }
 
@@ -168,7 +171,8 @@ func (a *Common) Dependencies() []asset.Asset {
 func (a *Common) generateConfig(dependencies asset.Parents, templateData *bootstrapTemplateData) error {
 	installConfig := &installconfig.InstallConfig{}
 	bootstrapSSHKeyPair := &tls.BootstrapSSHKeyPair{}
-	dependencies.Get(installConfig, bootstrapSSHKeyPair)
+	aroDNSConfig := &bootkube.ARODNSConfig{}
+	dependencies.Get(installConfig, bootstrapSSHKeyPair, aroDNSConfig)
 
 	a.Config = &igntypes.Config{
 		Ignition: igntypes.Ignition{
@@ -213,6 +217,14 @@ func (a *Common) generateConfig(dependencies asset.Parents, templateData *bootst
 			igntypes.SSHAuthorizedKey(string(bootstrapSSHKeyPair.Public())),
 		}},
 	)
+
+	dnsmasqIgnConfig, err := dnsmasq.Ignition3Config(installConfig.Config.ClusterDomain(), aroDNSConfig.APIIntIP, aroDNSConfig.IngressIP)
+	if err != nil {
+		return err
+	}
+
+	a.Config.Storage.Files = append(a.Config.Storage.Files, dnsmasqIgnConfig.Storage.Files...)
+	a.Config.Systemd.Units = append(a.Config.Systemd.Units, dnsmasqIgnConfig.Systemd.Units...)
 
 	return nil
 }
