@@ -7,6 +7,7 @@ import (
 
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
+	"github.com/openshift/installer/pkg/asset/templates/content/bootkube"
 	"github.com/openshift/installer/pkg/asset/tls"
 	"github.com/openshift/installer/pkg/ipnet"
 	"github.com/openshift/installer/pkg/types"
@@ -28,11 +29,12 @@ func TestWorkerGenerate(t *testing.T) {
 		})
 
 	rootCA := &tls.RootCA{}
+	aroDNSConfig := &bootkube.ARODNSConfig{}
 	err := rootCA.Generate(nil)
 	assert.NoError(t, err, "unexpected error generating root CA")
 
 	parents := asset.Parents{}
-	parents.Add(installConfig, rootCA)
+	parents.Add(installConfig, rootCA, aroDNSConfig)
 
 	worker := &Worker{}
 	err = worker.Generate(parents)

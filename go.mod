@@ -28,6 +28,7 @@ require (
 	github.com/clarketm/json v1.14.1
 	github.com/containers/image v3.0.2+incompatible
 	github.com/coreos/ignition/v2 v2.14.0
+	github.com/coreos/ignition v0.35.0
 	github.com/coreos/stream-metadata-go v0.1.8
 	github.com/daixiang0/gci v0.9.0
 	github.com/diskfs/go-diskfs v1.4.0
