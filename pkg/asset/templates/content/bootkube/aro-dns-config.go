@@ -8,7 +8,10 @@ var _ asset.WritableAsset = (*ARODNSConfig)(nil)
 
 // ARODNSConfig is an asset for the openshift-apiserver namespace
 type ARODNSConfig struct {
-	IngressIP string
+	APIIntIP                 string
+	IngressIP                string
+	GatewayDomains           []string
+	GatewayPrivateEndpointIP string
 }
 
 // Dependencies returns all of the dependencies directly needed by the asset
