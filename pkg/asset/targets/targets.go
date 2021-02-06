@@ -46,6 +46,7 @@ var (
 		&bootkube.OpenshiftConfigSecretPullSecret{},
 		&bootkube.KubevirtInfraNamespace{},
 		&bootkube.AROWorkerRegistries{},
+		&bootkube.AROIngressService{},
 		&openshift.CloudCredsSecret{},
 		&openshift.KubeadminPasswordSecret{},
 		&openshift.RoleCloudCredsSecretReader{},
