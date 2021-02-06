@@ -72,6 +72,8 @@ func (m *Manifests) Dependencies() []asset.Asset {
 		&bootkube.MachineConfigServerTLSSecret{},
 		&bootkube.OpenshiftConfigSecretPullSecret{},
 		&bootkube.AROWorkerRegistries{},
+		&bootkube.AROIngressService{},
+		&bootkube.ARODNSConfig{},
 	}
 }
 
@@ -131,11 +133,13 @@ func (m *Manifests) generateBootKubeManifests(dependencies asset.Parents) []*ass
 	installConfig := &installconfig.InstallConfig{}
 	mcsCertKey := &tls.MCSCertKey{}
 	rootCA := &tls.RootCA{}
+	aroDNSConfig := &bootkube.ARODNSConfig{}
 	dependencies.Get(
 		clusterID,
 		installConfig,
 		mcsCertKey,
 		rootCA,
+		aroDNSConfig,
 	)
 
 	templateData := &bootkubeTemplateData{
@@ -146,6 +150,8 @@ func (m *Manifests) generateBootKubeManifests(dependencies asset.Parents) []*ass
 		RootCaCert:          string(rootCA.Cert()),
 		IsOKD:               installConfig.Config.IsOKD(),
 		AROWorkerRegistries: aroWorkerRegistries(installConfig.Config.ImageContentSources),
+		AROIngressIP:        aroDNSConfig.IngressIP,
+		AROIngressInternal:  installConfig.Config.Publish == types.InternalPublishingStrategy,
 	}
 
 	files := []*asset.File{}
@@ -156,6 +162,7 @@ func (m *Manifests) generateBootKubeManifests(dependencies asset.Parents) []*ass
 		&bootkube.MachineConfigServerTLSSecret{},
 		&bootkube.OpenshiftConfigSecretPullSecret{},
 		&bootkube.AROWorkerRegistries{},
+		&bootkube.AROIngressService{},
 	} {
 		dependencies.Get(a)
 		for _, f := range a.Files() {
