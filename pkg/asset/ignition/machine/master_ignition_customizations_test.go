@@ -8,6 +8,7 @@ import (
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/ignition"
 	"github.com/openshift/installer/pkg/asset/installconfig"
+	"github.com/openshift/installer/pkg/asset/templates/content/bootkube"
 	"github.com/openshift/installer/pkg/asset/tls"
 	"github.com/openshift/installer/pkg/ipnet"
 	"github.com/openshift/installer/pkg/types"
@@ -51,8 +52,12 @@ func TestMasterIgnitionCustomizationsGenerate(t *testing.T) {
 			err := rootCA.Generate(nil)
 			assert.NoError(t, err, "unexpected error generating root CA")
 
+			aroDNSConfig := &bootkube.ARODNSConfig{}
+			err = aroDNSConfig.Generate(nil)
+			assert.NoError(t, err, "unexpected error generating ARO DNS Config")
+
 			parents := asset.Parents{}
-			parents.Add(installConfig, rootCA)
+			parents.Add(installConfig, rootCA, aroDNSConfig)
 
 			master := &Master{}
 			err = master.Generate(parents)
