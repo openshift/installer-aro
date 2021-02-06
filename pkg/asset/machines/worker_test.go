@@ -11,9 +11,56 @@ import (
 	"github.com/openshift/installer/pkg/asset/ignition/machine"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	"github.com/openshift/installer/pkg/asset/rhcos"
+	"github.com/openshift/installer/pkg/asset/templates/content/bootkube"
 	"github.com/openshift/installer/pkg/types"
 	awstypes "github.com/openshift/installer/pkg/types/aws"
 )
+
+var aroDNSWorkerMachineConfig = `apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  creationTimestamp: null
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-aro-dns
+spec:
+  config:
+    ignition:
+      version: 3.1.0
+    storage:
+      files:
+      - contents:
+          source: data:text/plain;charset=utf-8;base64,CnJlc29sdi1maWxlPS9ldGMvcmVzb2x2LmNvbmYuZG5zbWFzcQpzdHJpY3Qtb3JkZXIKYWRkcmVzcz0vYXBpLnRlc3QtY2x1c3Rlci50ZXN0LWRvbWFpbi8KYWRkcmVzcz0vYXBpLWludC50ZXN0LWNsdXN0ZXIudGVzdC1kb21haW4vCmFkZHJlc3M9Ly5hcHBzLnRlc3QtY2x1c3Rlci50ZXN0LWRvbWFpbi8KdXNlcj1kbnNtYXNxCmdyb3VwPWRuc21hc3EKbm8taG9zdHMKY2FjaGUtc2l6ZT0wCg==
+        mode: 420
+        overwrite: true
+        path: /etc/dnsmasq.conf
+        user:
+          name: root
+    systemd:
+      units:
+      - contents: |2
+
+          [Unit]
+          Description=DNS caching server.
+          After=network-online.target
+          Before=bootkube.service
+
+          [Service]
+          ExecStartPre=/bin/cp /etc/resolv.conf /etc/resolv.conf.dnsmasq
+          ExecStartPre=/bin/bash -c '/bin/sed -ni -e "/^nameserver /!p; \\$$a nameserver $$(hostname -I)" /etc/resolv.conf'
+          ExecStart=/usr/sbin/dnsmasq -k
+          ExecStop=/bin/mv /etc/resolv.conf.dnsmasq /etc/resolv.conf
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        enabled: true
+        name: dnsmasq.service
+  fips: false
+  kernelArguments: null
+  kernelType: ""
+  osImageURL: ""
+`
 
 func TestWorkerGenerate(t *testing.T) {
 	cases := []struct {
@@ -23,8 +70,9 @@ func TestWorkerGenerate(t *testing.T) {
 		expectedMachineConfig []string
 	}{
 		{
-			name:           "no key hyperthreading enabled",
-			hyperthreading: types.HyperthreadingEnabled,
+			name:                  "no key hyperthreading enabled",
+			hyperthreading:        types.HyperthreadingEnabled,
+			expectedMachineConfig: []string{aroDNSWorkerMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading enabled",
@@ -50,7 +98,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`},
+`, aroDNSWorkerMachineConfig},
 		},
 		{
 			name:           "no key hyperthreading disabled",
@@ -79,7 +127,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`},
+`, aroDNSWorkerMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading disabled",
@@ -129,7 +177,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`},
+`, aroDNSWorkerMachineConfig},
 		},
 	}
 	for _, tc := range cases {
@@ -173,6 +221,7 @@ spec:
 						Data:     []byte("test-ignition"),
 					},
 				},
+				&bootkube.ARODNSConfig{},
 			)
 			worker := &Worker{}
 			if err := worker.Generate(parents); err != nil {
