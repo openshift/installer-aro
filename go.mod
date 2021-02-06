@@ -32,6 +32,7 @@ require (
 	github.com/cavaliercoder/go-cpio v0.0.0-20180626203310-925f9528c45e
 	github.com/clarketm/json v1.14.1
 	github.com/containers/image/v5 v5.29.3
+	github.com/coreos/ignition v0.35.0
 	github.com/coreos/ignition/v2 v2.16.2
 	github.com/coreos/stream-metadata-go v0.1.8
 	github.com/daixiang0/gci v0.9.0
@@ -146,6 +147,7 @@ require (
 	github.com/cjlapao/common-go v0.0.39 // indirect
 	github.com/containers/storage v1.51.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
+	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/coreos/vcontext v0.0.0-20230201181013-d72178a18687 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
