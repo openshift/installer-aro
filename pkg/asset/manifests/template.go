@@ -86,6 +86,8 @@ type bootkubeTemplateData struct {
 	RootCaCert                 string
 	WorkerIgnConfig            string
 	AROWorkerRegistries        string
+	AROIngressIP               string
+	AROIngressInternal         bool
 }
 
 type baremetalTemplateData struct {
