@@ -23,6 +23,7 @@ require (
 	github.com/aws/aws-sdk-go v1.43.19
 	github.com/clarketm/json v1.14.1
 	github.com/containers/image v3.0.2+incompatible
+	github.com/coreos/ignition v0.35.0
 	github.com/coreos/ignition/v2 v2.9.0
 	github.com/coreos/stream-metadata-go v0.1.8
 	github.com/form3tech-oss/jwt-go v3.2.3+incompatible
