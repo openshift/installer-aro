@@ -18,6 +18,7 @@ import (
 	"github.com/openshift/installer/pkg/asset/templates/content/bootkube"
 	"github.com/openshift/installer/pkg/asset/tls"
 	"github.com/openshift/installer/pkg/types"
+	azuretypes "github.com/openshift/installer/pkg/types/azure"
 )
 
 const (
@@ -74,6 +75,8 @@ func (m *Manifests) Dependencies() []asset.Asset {
 		&bootkube.AROWorkerRegistries{},
 		&bootkube.AROIngressService{},
 		&bootkube.ARODNSConfig{},
+		&bootkube.AROImageRegistry{},
+		&bootkube.AROImageRegistryConfig{},
 	}
 }
 
@@ -134,24 +137,34 @@ func (m *Manifests) generateBootKubeManifests(dependencies asset.Parents) []*ass
 	mcsCertKey := &tls.MCSCertKey{}
 	rootCA := &tls.RootCA{}
 	aroDNSConfig := &bootkube.ARODNSConfig{}
+	aroImageRegistryConfig := &bootkube.AROImageRegistryConfig{}
 	dependencies.Get(
 		clusterID,
 		installConfig,
 		mcsCertKey,
 		rootCA,
 		aroDNSConfig,
+		aroImageRegistryConfig,
 	)
 
 	templateData := &bootkubeTemplateData{
-		CVOClusterID:        clusterID.UUID,
-		McsTLSCert:          base64.StdEncoding.EncodeToString(mcsCertKey.Cert()),
-		McsTLSKey:           base64.StdEncoding.EncodeToString(mcsCertKey.Key()),
-		PullSecretBase64:    base64.StdEncoding.EncodeToString([]byte(installConfig.Config.PullSecret)),
-		RootCaCert:          string(rootCA.Cert()),
-		IsOKD:               installConfig.Config.IsOKD(),
-		AROWorkerRegistries: aroWorkerRegistries(installConfig.Config.ImageContentSources),
-		AROIngressIP:        aroDNSConfig.IngressIP,
-		AROIngressInternal:  installConfig.Config.Publish == types.InternalPublishingStrategy,
+		CVOClusterID:                  clusterID.UUID,
+		McsTLSCert:                    base64.StdEncoding.EncodeToString(mcsCertKey.Cert()),
+		McsTLSKey:                     base64.StdEncoding.EncodeToString(mcsCertKey.Key()),
+		PullSecretBase64:              base64.StdEncoding.EncodeToString([]byte(installConfig.Config.PullSecret)),
+		RootCaCert:                    string(rootCA.Cert()),
+		IsOKD:                         installConfig.Config.IsOKD(),
+		AROWorkerRegistries:           aroWorkerRegistries(installConfig.Config.ImageContentSources),
+		AROIngressIP:                  aroDNSConfig.IngressIP,
+		AROIngressInternal:            installConfig.Config.Publish == types.InternalPublishingStrategy,
+		AROImageRegistryHTTPSecret:    aroImageRegistryConfig.HTTPSecret,
+		AROImageRegistryAccountName:   aroImageRegistryConfig.AccountName,
+		AROImageRegistryContainerName: aroImageRegistryConfig.ContainerName,
+	}
+
+	switch installConfig.Config.Platform.Name() {
+	case azuretypes.Name:
+		templateData.AROCloudName = installConfig.Azure.CloudName.Name()
 	}
 
 	files := []*asset.File{}
@@ -163,6 +176,7 @@ func (m *Manifests) generateBootKubeManifests(dependencies asset.Parents) []*ass
 		&bootkube.OpenshiftConfigSecretPullSecret{},
 		&bootkube.AROWorkerRegistries{},
 		&bootkube.AROIngressService{},
+		&bootkube.AROImageRegistry{},
 	} {
 		dependencies.Get(a)
 		for _, f := range a.Files() {
