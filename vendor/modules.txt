@@ -1128,7 +1128,7 @@ github.com/opencontainers/image-spec/specs-go/v1
 # github.com/openshift-metal3/terraform-provider-ironic v0.2.6
 ## explicit
 github.com/openshift-metal3/terraform-provider-ironic/ironic
-# github.com/openshift/api v0.0.0-20210420151714-a3c8fa53e01b
+# github.com/openshift/api v0.0.0-20210428205234-a8389931bee7 => github.com/openshift/api v0.0.0-20210420151714-a3c8fa53e01b
 ## explicit
 github.com/openshift/api/config/v1
 github.com/openshift/api/operator/v1
@@ -1147,7 +1147,7 @@ github.com/openshift/client-go/route/clientset/versioned/typed/route/v1
 github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1
 github.com/openshift/cloud-credential-operator/pkg/aws
 github.com/openshift/cloud-credential-operator/version
-# github.com/openshift/cluster-api v0.0.0-20191030113141-9a3a7bbe9258
+# github.com/openshift/cluster-api v0.0.0-20190805113604-f8de78af80fc
 github.com/openshift/cluster-api/pkg/apis/machine/common
 github.com/openshift/cluster-api/pkg/apis/machine/v1beta1
 # github.com/openshift/cluster-api-provider-gcp v0.0.1-0.20201203141909-4dc702fd57a5
@@ -1173,7 +1173,7 @@ github.com/openshift/custom-resource-status/conditions/v1
 ## explicit
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
 github.com/openshift/library-go/pkg/route/routeapihelpers
-# github.com/openshift/machine-api-operator v0.2.1-0.20210104142355-8e6ae0acdfcf
+# github.com/openshift/machine-api-operator v0.2.1-0.20210516083017-bb9e0b5c1170 => github.com/openshift/machine-api-operator v0.2.1-0.20210104142355-8e6ae0acdfcf
 ## explicit
 github.com/openshift/machine-api-operator/pkg/apis/machine
 github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1
@@ -2434,7 +2434,7 @@ kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1
 ## explicit
 sigs.k8s.io/cluster-api-provider-aws/pkg/apis
 sigs.k8s.io/cluster-api-provider-aws/pkg/apis/awsprovider/v1beta1
-# sigs.k8s.io/cluster-api-provider-azure v0.0.0 => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20201016155852-4090a6970205
+# sigs.k8s.io/cluster-api-provider-azure v0.0.0 => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20210526201839-030576700653
 ## explicit
 sigs.k8s.io/cluster-api-provider-azure/pkg/apis
 sigs.k8s.io/cluster-api-provider-azure/pkg/apis/azureprovider/v1beta1
@@ -2598,7 +2598,7 @@ sigs.k8s.io/yaml
 # k8s.io/kubectl => k8s.io/kubectl v0.21.0-rc.0
 # kubevirt.io/client-go => kubevirt.io/client-go v0.29.0
 # sigs.k8s.io/cluster-api-provider-aws => github.com/openshift/cluster-api-provider-aws v0.2.1-0.20210121023454-5ffc5f422a80
-# sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20201016155852-4090a6970205
+# sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20210526201839-030576700653
 # sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.0.0-20210302164104-8498241fa4bd
 # sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.9.0-alpha.1
 # sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.3.1-0.20200617211605-651903477185
@@ -2610,3 +2610,5 @@ sigs.k8s.io/yaml
 # google.golang.org/api => google.golang.org/api v0.25.0
 # google.golang.org/genproto => google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
+# github.com/openshift/api => github.com/openshift/api v0.0.0-20210420151714-a3c8fa53e01b
+# github.com/openshift/machine-api-operator => github.com/openshift/machine-api-operator v0.2.1-0.20210104142355-8e6ae0acdfcf

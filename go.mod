@@ -54,7 +54,7 @@ require (
 	github.com/metal3-io/cluster-api-provider-baremetal v0.0.0
 	github.com/mitchellh/cli v1.1.1
 	github.com/openshift-metal3/terraform-provider-ironic v0.2.6
-	github.com/openshift/api v0.0.0-20210420151714-a3c8fa53e01b
+	github.com/openshift/api v0.0.0-20210428205234-a8389931bee7
 	github.com/openshift/client-go v0.0.0-20201214125552-e615e336eb49
 	github.com/openshift/cloud-credential-operator v0.0.0-20200316201045-d10080b52c9e
 	github.com/openshift/cluster-api-provider-gcp v0.0.1-0.20201203141909-4dc702fd57a5
@@ -62,7 +62,7 @@ require (
 	github.com/openshift/cluster-api-provider-libvirt v0.2.1-0.20191219173431-2336783d4603
 	github.com/openshift/cluster-api-provider-ovirt v0.1.1-0.20210406154451-1ea59ab6b543
 	github.com/openshift/library-go v0.0.0-20201215165635-4ee79b1caed5
-	github.com/openshift/machine-api-operator v0.2.1-0.20210104142355-8e6ae0acdfcf
+	github.com/openshift/machine-api-operator v0.2.1-0.20210516083017-bb9e0b5c1170
 	github.com/openshift/machine-config-operator v0.0.0
 	github.com/ovirt/go-ovirt v0.0.0-20210308100159-ac0bcbc88d7c
 	github.com/ovirt/terraform-provider-ovirt v0.99.1-0.20210527150815-b3d4424a7da1
@@ -131,7 +131,7 @@ replace (
 	k8s.io/kubectl => k8s.io/kubectl v0.21.0-rc.0
 	kubevirt.io/client-go => kubevirt.io/client-go v0.29.0
 	sigs.k8s.io/cluster-api-provider-aws => github.com/openshift/cluster-api-provider-aws v0.2.1-0.20210121023454-5ffc5f422a80
-	sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20201016155852-4090a6970205
+	sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20210526201839-030576700653
 	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.0.0-20210302164104-8498241fa4bd
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.9.0-alpha.1
 	sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.3.1-0.20200617211605-651903477185
@@ -148,4 +148,10 @@ replace (
 	google.golang.org/api => google.golang.org/api v0.25.0
 	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 	google.golang.org/grpc => google.golang.org/grpc v1.29.1
+)
+
+// Prevent the following modules from upgrading version as result of sigs.k8s.io/cluster-api-provider-azure upgrade
+replace (
+	github.com/openshift/api => github.com/openshift/api v0.0.0-20210420151714-a3c8fa53e01b
+	github.com/openshift/machine-api-operator => github.com/openshift/machine-api-operator v0.2.1-0.20210104142355-8e6ae0acdfcf
 )
