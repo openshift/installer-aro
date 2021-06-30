@@ -144,6 +144,12 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		}
 	}
 
+	if mpool.OSDisk.DiskEncryptionSetID != "" {
+		spec.OSDisk.ManagedDisk.DiskEncryptionSet = &azureprovider.DiskEncryptionSetParameters{
+			ID: mpool.OSDisk.DiskEncryptionSetID,
+		}
+	}
+
 	if platform.ARO {
 		spec.ManagedIdentity = ""
 	}
