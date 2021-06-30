@@ -4,9 +4,9 @@ go 1.14
 
 require (
 	cloud.google.com/go v0.65.0
-	github.com/Azure/azure-sdk-for-go v43.2.0+incompatible
+	github.com/Azure/azure-sdk-for-go v48.0.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.6
-	github.com/Azure/go-autorest/autorest/adal v0.9.4
+	github.com/Azure/go-autorest/autorest/adal v0.9.5
 	github.com/Azure/go-autorest/autorest/azure/auth v0.4.1
 	github.com/Azure/go-autorest/autorest/to v0.3.1-0.20191028180845-3492b2aff503
 	github.com/Azure/go-ntlmssp v0.0.0-20191115210519-2b2be6cc8ed4 // indirect
@@ -54,14 +54,14 @@ require (
 	github.com/mitchellh/cli v1.1.1
 	github.com/openshift-metal3/terraform-provider-ironic v0.2.4
 	github.com/openshift/api v3.9.1-0.20191111211345-a27ff30ebf09+incompatible
-	github.com/openshift/client-go v0.0.0-20201020074620-f8fd44879f7c
+	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
 	github.com/openshift/cloud-credential-operator v0.0.0-20200316201045-d10080b52c9e
-	github.com/openshift/cluster-api-provider-gcp v0.0.1-0.20201203141909-4dc702fd57a5
+	github.com/openshift/cluster-api-provider-gcp v0.0.1-0.20210318124828-7215497c95a4
 	github.com/openshift/cluster-api-provider-kubevirt v0.0.0-20201214114543-e5aed9c73f1f
 	github.com/openshift/cluster-api-provider-libvirt v0.2.1-0.20191219173431-2336783d4603
 	github.com/openshift/cluster-api-provider-ovirt v0.1.1-0.20200504092944-27473ea1ae43
-	github.com/openshift/library-go v0.0.0-20201109112824-093ad3cf6600
-	github.com/openshift/machine-api-operator v0.2.1-0.20201111151924-77300d0c997a
+	github.com/openshift/library-go v0.0.0-20210205203934-9eb0d970f2f4
+	github.com/openshift/machine-api-operator v0.2.1-0.20210516083017-bb9e0b5c1170
 	github.com/openshift/machine-config-operator v0.0.0
 	github.com/ovirt/go-ovirt v0.0.0-20210112072624-e4d3b104de71
 	github.com/ovirt/terraform-provider-ovirt v0.4.3-0.20210118101701-cc657a8c6634
@@ -94,16 +94,16 @@ require (
 	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb // indirect
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
 	golang.org/x/sys v0.0.0-20201202213521-69691e467435
-	golang.org/x/tools v0.0.0-20201202200335-bef1c476418a // indirect
 	google.golang.org/api v0.33.0
-	google.golang.org/genproto v0.0.0-20200911024640-645f7a48b24f
+	google.golang.org/genproto v0.0.0-20201110150050-8816d57aaa9a
 	google.golang.org/grpc v1.32.0
+	google.golang.org/protobuf v1.25.0 // indirect
 	gopkg.in/AlecAivazis/survey.v1 v1.8.9-0.20200217094205-6773bdf39b7f
 	gopkg.in/ini.v1 v1.61.0
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.20.1
-	k8s.io/apiextensions-apiserver v0.19.4
-	k8s.io/apimachinery v0.20.1
+	k8s.io/api v0.20.6
+	k8s.io/apiextensions-apiserver v0.20.0
+	k8s.io/apimachinery v0.20.6
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.4.0
@@ -140,7 +140,7 @@ replace (
 	k8s.io/client-go => k8s.io/client-go v0.19.0
 	kubevirt.io/client-go => kubevirt.io/client-go v0.29.0
 	sigs.k8s.io/cluster-api-provider-aws => github.com/openshift/cluster-api-provider-aws v0.2.1-0.20201022175424-d30c7a274820
-	sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20201016155852-4090a6970205
+	sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20210526201839-030576700653
 	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.0.0-20201116051540-155384b859c5
 	sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.3.1-0.20200617211605-651903477185
 )
@@ -160,4 +160,11 @@ replace (
 	google.golang.org/api => google.golang.org/api v0.25.0
 	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 	google.golang.org/grpc => google.golang.org/grpc v1.29.1
+)
+
+// Prevent the following modules from upgrading version as result of sigs.k8s.io/cluster-api-provider-azure upgrade
+replace (
+	github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v43.2.0+incompatible
+	github.com/openshift/machine-api-operator => github.com/openshift/machine-api-operator v0.2.1-0.20201111151924-77300d0c997a
+	k8s.io/kubectl => k8s.io/kubectl v0.19.1
 )
