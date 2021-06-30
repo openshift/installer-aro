@@ -116,6 +116,13 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		mpool.OSDisk.DiskType = "Premium_LRS"
 	}
 
+	var diskEncryptionSet *azureprovider.DiskEncryptionSetParameters = nil
+	if mpool.OSDisk.DiskEncryptionSetID != "" {
+		diskEncryptionSet = &azureprovider.DiskEncryptionSetParameters{
+			ID: mpool.OSDisk.DiskEncryptionSetID,
+		}
+	}
+
 	publicLB := clusterID
 	if platform.OutboundType == azure.UserDefinedRoutingOutboundType {
 		publicLB = ""
@@ -141,6 +148,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 			DiskSizeGB: mpool.OSDisk.DiskSizeGB,
 			ManagedDisk: azureprovider.ManagedDiskParameters{
 				StorageAccountType: mpool.OSDisk.DiskType,
+				DiskEncryptionSet:  diskEncryptionSet,
 			},
 		},
 		Zone:                 az,

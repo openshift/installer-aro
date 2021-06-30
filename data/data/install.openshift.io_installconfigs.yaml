@@ -135,6 +135,10 @@ spec:
                         osDisk:
                           description: OSDisk defines the storage for instance.
                           properties:
+                            diskEncryptionSetId:
+                              description: DiskEncryptionSetID is a resource ID of
+                                disk encryption set
+                              type: string
                             diskSizeGB:
                               description: DiskSizeGB defines the size of disk in
                                 GB.
@@ -562,6 +566,10 @@ spec:
                       osDisk:
                         description: OSDisk defines the storage for instance.
                         properties:
+                          diskEncryptionSetId:
+                            description: DiskEncryptionSetID is a resource ID of disk
+                              encryption set
+                            type: string
                           diskSizeGB:
                             description: DiskSizeGB defines the size of disk in GB.
                             format: int32
@@ -1209,6 +1217,10 @@ spec:
                       osDisk:
                         description: OSDisk defines the storage for instance.
                         properties:
+                          diskEncryptionSetId:
+                            description: DiskEncryptionSetID is a resource ID of disk
+                              encryption set
+                            type: string
                           diskSizeGB:
                             description: DiskSizeGB defines the size of disk in GB.
                             format: int32
