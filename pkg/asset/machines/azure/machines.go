@@ -150,6 +150,12 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		}
 	}
 
+	if mpool.EncryptionAtHost {
+		spec.SecurityProfile = &azureprovider.SecurityProfile{
+			EncryptionAtHost: &mpool.EncryptionAtHost,
+		}
+	}
+
 	if platform.ARO {
 		spec.ManagedIdentity = ""
 	}

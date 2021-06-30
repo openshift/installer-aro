@@ -132,6 +132,9 @@ spec:
                       description: Azure is the configuration used when installing
                         on Azure.
                       properties:
+                        encryptionAtHost:
+                          description: EncryptionAtHost
+                          type: boolean
                         osDisk:
                           description: OSDisk defines the storage for instance.
                           properties:
@@ -510,6 +513,9 @@ spec:
                     description: Azure is the configuration used when installing on
                       Azure.
                     properties:
+                      encryptionAtHost:
+                        description: EncryptionAtHost
+                        type: boolean
                       osDisk:
                         description: OSDisk defines the storage for instance.
                         properties:
@@ -1102,6 +1108,9 @@ spec:
                       used when installing on Azure for machine pools which do not
                       define their own platform configuration.
                     properties:
+                      encryptionAtHost:
+                        description: EncryptionAtHost
+                        type: boolean
                       osDisk:
                         description: OSDisk defines the storage for instance.
                         properties:
