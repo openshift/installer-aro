@@ -133,6 +133,13 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		managedIdentity = ""
 	}
 
+	var securityProfile *azureprovider.SecurityProfile = nil
+	if mpool.EncryptionAtHost {
+		securityProfile = &azureprovider.SecurityProfile{
+			EncryptionAtHost: &mpool.EncryptionAtHost,
+		}
+	}
+
 	return &azureprovider.AzureMachineProviderSpec{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "azureproviderconfig.openshift.io/v1beta1",
@@ -158,6 +165,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		ResourceGroup:        rg,
 		NetworkResourceGroup: networkResourceGroup,
 		PublicLoadBalancer:   publicLB,
+		SecurityProfile:      securityProfile,
 	}, nil
 }
 
