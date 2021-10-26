@@ -340,6 +340,7 @@ var validGroupWithConflictinsTagsResult = &azres.Group{
 func Test_validateResourceGroup(t *testing.T) {
 	cases := []struct {
 		groupName string
+		wantSkip  func(p *azure.Platform) bool
 		err       string
 	}{{
 		groupName: "non-existent-group",
@@ -356,7 +357,10 @@ func Test_validateResourceGroup(t *testing.T) {
 		err:       `^\Qplatform.azure.resourceGroupName: Invalid value: "valid-resource-group-conf-tags": resource group has conflicting tags kubernetes.io_cluster.test-cluster-12345\E$`,
 	}, {
 		groupName: "valid-resource-group-with-resources",
-		err:       `^\Qplatform.azure.resourceGroupName: Invalid value: "valid-resource-group-with-resources": resource group must be empty but it has 3 resources like id1, id2 ...\E$`,
+		// ARO provisions Azure resources before resolving the asset graph,
+		// so there will always be resources in its resource group.
+		wantSkip: func(p *azure.Platform) bool { return p.IsARO() },
+		err:      `^\Qplatform.azure.resourceGroupName: Invalid value: "valid-resource-group-with-resources": resource group must be empty but it has 3 resources like id1, id2 ...\E$`,
 	}}
 
 	mockCtrl := gomock.NewController(t)
@@ -372,8 +376,12 @@ func Test_validateResourceGroup(t *testing.T) {
 	azureClient.EXPECT().ListResourceIDsByGroup(gomock.Any(), gomock.Not("valid-resource-group-with-resources")).Return(nil, nil).AnyTimes()
 	azureClient.EXPECT().ListResourceIDsByGroup(gomock.Any(), "valid-resource-group-with-resources").Return([]string{"id1", "id2", "id3"}, nil).AnyTimes()
 
+	p := &azure.Platform{}
 	for _, test := range cases {
 		t.Run("", func(t *testing.T) {
+			if test.wantSkip != nil && test.wantSkip(p) {
+				t.Skip()
+			}
 			err := validateResourceGroup(azureClient, field.NewPath("platform").Child("azure"), &azure.Platform{ResourceGroupName: test.groupName, Region: "centralus"})
 			if test.err != "" {
 				assert.Regexp(t, test.err, err.ToAggregate())
