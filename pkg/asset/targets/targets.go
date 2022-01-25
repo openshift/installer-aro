@@ -37,7 +37,6 @@ var (
 		&bootkube.KubeSystemConfigmapRootCA{},
 		&bootkube.OpenshiftMachineConfigOperator{},
 		&bootkube.OpenshiftConfigSecretPullSecret{},
-		&bootkube.KubevirtInfraNamespace{},
 		&bootkube.AROWorkerRegistries{},
 		&bootkube.AROIngressService{},
 		&bootkube.AROImageRegistry{},

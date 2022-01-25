@@ -90,18 +90,6 @@ aliases:
     - eslutsky
     - dougsland
     - janosdebugs
-  kubevirt-approvers:
-    - nirarg
-    - bardielle
-    - ravidbro
-    - rgolangh
-    - chenyosef
-  kubevirt-reviewers:
-    - nirarg
-    - bardielle
-    - ravidbro
-    - rgolangh
-    - chenyosef
   ibmcloud-approvers:
     - bobbyradford
     - hasueki
