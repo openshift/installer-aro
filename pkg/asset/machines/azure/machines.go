@@ -133,6 +133,13 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		managedIdentity = ""
 	}
 
+	var securityProfile *machineapi.SecurityProfile = nil
+	if mpool.EncryptionAtHost {
+		securityProfile = &machineapi.SecurityProfile{
+			EncryptionAtHost: &mpool.EncryptionAtHost,
+		}
+	}
+
 	spec := &machineapi.AzureMachineProviderSpec{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "machine.openshift.io/v1beta1",
@@ -158,6 +165,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		ResourceGroup:        rg,
 		NetworkResourceGroup: networkResourceGroup,
 		PublicLoadBalancer:   publicLB,
+		SecurityProfile:      securityProfile,
 	}
 
 	if platform.CloudName == azure.StackCloud {
