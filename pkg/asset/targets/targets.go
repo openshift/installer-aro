@@ -36,6 +36,9 @@ var (
 		&bootkube.CVOOverrides{},
 		&bootkube.KubeSystemConfigmapRootCA{},
 		&bootkube.OpenshiftConfigSecretPullSecret{},
+		&bootkube.AROWorkerRegistries{},
+		&bootkube.AROIngressService{},
+		&bootkube.AROImageRegistry{},
 		&openshift.CloudCredsSecret{},
 		&openshift.KubeadminPasswordSecret{},
 		&openshift.RoleCloudCredsSecretReader{},
@@ -69,6 +72,5 @@ var (
 		&kubeconfig.AdminClient{},
 		&password.KubeadminPassword{},
 		&tls.JournalCertKey{},
-		&cluster.Cluster{},
 	}
 )

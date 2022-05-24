@@ -79,12 +79,33 @@ func Machines(clusterID string, config *types.InstallConfig, pool *types.Machine
 }
 
 func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string, userDataSecret string, clusterID string, role string, azIdx *int) (*machineapi.AzureMachineProviderSpec, error) {
+	var image machineapi.Image
+
 	var az *string
 	if len(mpool.Zones) > 0 && azIdx != nil {
 		az = &mpool.Zones[*azIdx]
 	}
 
 	rg := platform.ClusterResourceGroupName(clusterID)
+
+	if platform.Image != nil {
+		if platform.Image.ResourceID != "" {
+			image = machineapi.Image{
+				ResourceID: platform.Image.ResourceID,
+			}
+		} else {
+			image = machineapi.Image{
+				Publisher: platform.Image.Publisher,
+				Offer:     platform.Image.Offer,
+				SKU:       platform.Image.SKU,
+				Version:   platform.Image.Version,
+			}
+		}
+	} else {
+		image = machineapi.Image{
+			ResourceID: fmt.Sprintf("/resourceGroups/%s/providers/Microsoft.Compute/images/%s", rg, clusterID),
+		}
+	}
 
 	networkResourceGroup, virtualNetwork, subnet, err := getNetworkInfo(platform, clusterID, role)
 	if err != nil {
@@ -93,6 +114,13 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 
 	if mpool.OSDisk.DiskType == "" {
 		mpool.OSDisk.DiskType = "Premium_LRS"
+	}
+
+	var diskEncryptionSet *machineapi.DiskEncryptionSetParameters = nil
+	if mpool.OSDisk.DiskEncryptionSetID != "" {
+		diskEncryptionSet = &machineapi.DiskEncryptionSetParameters{
+			ID: mpool.OSDisk.DiskEncryptionSetID,
+		}
 	}
 
 	publicLB := clusterID
@@ -105,6 +133,13 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		managedIdentity = ""
 	}
 
+	var securityProfile *machineapi.SecurityProfile = nil
+	if mpool.EncryptionAtHost {
+		securityProfile = &machineapi.SecurityProfile{
+			EncryptionAtHost: &mpool.EncryptionAtHost,
+		}
+	}
+
 	spec := &machineapi.AzureMachineProviderSpec{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "machine.openshift.io/v1beta1",
@@ -114,14 +149,13 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		CredentialsSecret: &corev1.SecretReference{Name: cloudsSecret, Namespace: cloudsSecretNamespace},
 		Location:          platform.Region,
 		VMSize:            mpool.InstanceType,
-		Image: machineapi.Image{
-			ResourceID: fmt.Sprintf("/resourceGroups/%s/providers/Microsoft.Compute/images/%s", rg, clusterID),
-		},
+		Image:             image,
 		OSDisk: machineapi.OSDisk{
 			OSType:     "Linux",
 			DiskSizeGB: mpool.OSDisk.DiskSizeGB,
 			ManagedDisk: machineapi.ManagedDiskParameters{
 				StorageAccountType: mpool.OSDisk.DiskType,
+				DiskEncryptionSet:  diskEncryptionSet,
 			},
 		},
 		Zone:                 az,
@@ -131,6 +165,7 @@ func provider(platform *azure.Platform, mpool *azure.MachinePool, osImage string
 		ResourceGroup:        rg,
 		NetworkResourceGroup: networkResourceGroup,
 		PublicLoadBalancer:   publicLB,
+		SecurityProfile:      securityProfile,
 	}
 
 	if platform.CloudName == azure.StackCloud {
