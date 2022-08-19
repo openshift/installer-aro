@@ -130,6 +130,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
+	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/coreos/vcontext v0.0.0-20201120045928-b0e13dab675c // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -211,3 +212,6 @@ replace k8s.io/client-go => k8s.io/client-go v0.23.0
 
 // Needed so that the InstallConfig CRD can be created. Later versions of controller-gen balk at using IPNet as a field.
 replace sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.3.1-0.20200617211605-651903477185
+
+// Needed so that DiskEncryptionSets can use an updated API
+replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v63.1.0+incompatible
