@@ -24,8 +24,8 @@ require (
 	github.com/aws/aws-sdk-go v1.44.215
 	github.com/clarketm/json v1.14.1
 	github.com/containers/image v3.0.2+incompatible
+	github.com/coreos/go-semver v0.3.0
 	github.com/coreos/ignition/v2 v2.14.0
-	github.com/coreos/ignition v0.35.0
 	github.com/coreos/stream-metadata-go v0.1.8
 	github.com/form3tech-oss/jwt-go v3.2.3+incompatible
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32
@@ -140,7 +140,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cavaliercoder/go-cpio v0.0.0-20180626203310-925f9528c45e // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/coreos/vcontext v0.0.0-20211021162308-f1dbbca7bef4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
