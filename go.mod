@@ -23,8 +23,8 @@ require (
 	github.com/aws/aws-sdk-go v1.43.19
 	github.com/clarketm/json v1.14.1
 	github.com/containers/image v3.0.2+incompatible
-	github.com/coreos/ignition v0.35.0
-	github.com/coreos/ignition/v2 v2.9.0
+	github.com/coreos/go-semver v0.3.0
+	github.com/coreos/ignition/v2 v2.14.0
 	github.com/coreos/stream-metadata-go v0.1.8
 	github.com/form3tech-oss/jwt-go v3.2.3+incompatible
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32
@@ -64,7 +64,7 @@ require (
 	github.com/spf13/cobra v1.2.1
 	github.com/stretchr/testify v1.7.2
 	github.com/ulikunitz/xz v0.5.8
-	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50
+	github.com/vincent-petithory/dataurl v1.0.0
 	github.com/vmware/govmomi v0.27.4
 	golang.org/x/crypto v0.0.0-20211202192323-5770296d904e
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616
@@ -89,7 +89,7 @@ require (
 
 require (
 	github.com/shurcooL/httpfs v0.0.0-20171119174359-809beceb2371 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.6-0.20210604193023-d5e0c0615ace // indirect
 	github.com/zclconf/go-cty v1.10.0 // indirect
 	go.mongodb.org/mongo-driver v1.8.3 // indirect
 	go.opencensus.io v0.23.0 // indirect
@@ -129,10 +129,8 @@ require (
 	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
-	github.com/coreos/go-semver v0.3.0 // indirect
-	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
-	github.com/coreos/vcontext v0.0.0-20201120045928-b0e13dab675c // indirect
+	github.com/coreos/vcontext v0.0.0-20211021162308-f1dbbca7bef4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dimchansky/utfbom v1.1.0 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
