@@ -94,7 +94,7 @@ a preexisting network.
 
     - Set `controlPlane.platform.openstack.type` to the VM flavor which will be used by the control plane nodes.
 
-    - Set `platform.openstack.machinesSubnet` to the UUID of the pre-provisioned subnet.
+    - Set `platform.openstack.controlPlanePort.fixedIPs.subnet.id` to the UUID of the pre-provisioned subnet and/or `platform.openstack.controlPlanePort.fixedIPs.subnet.name` to the name of pre-provisioned subnet. 
 
         For example:
 
@@ -118,7 +118,10 @@ a preexisting network.
 
                  platform:
                    openstack:
-                     machinesSubnet: <uuidOfPreprovisionedSubnet>
+                      controlPlanePort:
+                        fixedIPs:
+                          - subnet:
+                              id: <uuidOfPreprovisionedSubnet>
 
 - Run the openshift installer:
 
@@ -143,7 +146,7 @@ Plane and Compute nodes. The cluster is deployed to a preexisting network.
 
     - Set `controlPlane.platform.openstack.type` to a bare-metal server flavor.
 
-    - Set `platform.openstack.machinesSubnet` to the UUID of the pre-provisioned subnet.
+    - Set `platform.openstack.controlPlanePort.fixedIPs.subnet.id` to the UUID of the pre-provisioned subnet and/or `platform.openstack.controlPlanePort.fixedIPs.subnet.name` to the name of pre-provisioned subnet.
 
         For example:
 
@@ -167,7 +170,10 @@ Plane and Compute nodes. The cluster is deployed to a preexisting network.
 
                  platform:
                    openstack:
-                     machinesSubnet: <uuidOfPreprovisionedSubnet>
+                      controlPlanePort:
+                        fixedIPs:
+                          - subnet:
+                              id: <uuidOfPreprovisionedSubnet>
 
 - Run the openshift installer:
 
@@ -214,11 +220,6 @@ Cluster is initially deployed with VM workers. BM workers are added to the clust
         ./openshift-install create cluster --log-level debug
         
 - Once the cluster is deployed and running, [create and deploy a new infrastructure MachineSet][6] using the bare-metal server flavor.
-
-## Known issues
-
-Bare metal nodes are not supported on clusters that use Kuryr.
-
 
 [1]: <https://docs.openstack.org/nova/latest/user/flavors.html> "In OpenStack, flavors define the compute, memory, and storage capacity of nova computing instances"
 [2]: <https://docs.openstack.org/ironic/latest/>

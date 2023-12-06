@@ -31,6 +31,11 @@ func (c *AdminKubeConfigSignerCertKey) Generate(parents asset.Parents) error {
 	return c.SelfSignedCertKey.Generate(cfg, "admin-kubeconfig-signer")
 }
 
+// Load reads the asset files from disk.
+func (c *AdminKubeConfigSignerCertKey) Load(f asset.FileFetcher) (bool, error) {
+	return c.loadCertKey(f, "admin-kubeconfig-signer")
+}
+
 // Name returns the human-friendly name of the asset.
 func (c *AdminKubeConfigSignerCertKey) Name() string {
 	return "Certificate (admin-kubeconfig-signer)"
@@ -66,7 +71,7 @@ func (a *AdminKubeConfigCABundle) Name() string {
 	return "Certificate (admin-kubeconfig-ca-bundle)"
 }
 
-//AdminKubeConfigClientCertKey is the asset that generates the key/cert pair for admin client to apiserver.
+// AdminKubeConfigClientCertKey is the asset that generates the key/cert pair for admin client to apiserver.
 type AdminKubeConfigClientCertKey struct {
 	SignedCertKey
 }
@@ -95,6 +100,11 @@ func (a *AdminKubeConfigClientCertKey) Generate(dependencies asset.Parents) erro
 	}
 
 	return a.SignedCertKey.Generate(cfg, ca, "admin-kubeconfig-client", DoNotAppendParent)
+}
+
+// Load reads the asset files from disk.
+func (a *AdminKubeConfigClientCertKey) Load(f asset.FileFetcher) (bool, error) {
+	return a.loadCertKey(f, "admin-kubeconfig-client")
 }
 
 // Name returns the human-friendly name of the asset.

@@ -4,18 +4,25 @@ import (
 	"fmt"
 	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/ipnet"
+	"github.com/openshift/installer/pkg/types/alibabacloud"
 	"github.com/openshift/installer/pkg/types/aws"
 	"github.com/openshift/installer/pkg/types/azure"
 	"github.com/openshift/installer/pkg/types/baremetal"
+	"github.com/openshift/installer/pkg/types/external"
+	"github.com/openshift/installer/pkg/types/featuregates"
 	"github.com/openshift/installer/pkg/types/gcp"
-	"github.com/openshift/installer/pkg/types/kubevirt"
+	"github.com/openshift/installer/pkg/types/ibmcloud"
 	"github.com/openshift/installer/pkg/types/libvirt"
 	"github.com/openshift/installer/pkg/types/none"
+	"github.com/openshift/installer/pkg/types/nutanix"
 	"github.com/openshift/installer/pkg/types/openstack"
 	"github.com/openshift/installer/pkg/types/ovirt"
+	"github.com/openshift/installer/pkg/types/powervs"
 	"github.com/openshift/installer/pkg/types/vsphere"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -30,11 +37,14 @@ var (
 	// platform names in alphabetical order. This is the list of
 	// platforms presented to the user in the interactive wizard.
 	PlatformNames = []string{
+		alibabacloud.Name,
 		aws.Name,
 		azure.Name,
 		gcp.Name,
+		ibmcloud.Name,
+		nutanix.Name,
 		openstack.Name,
-		ovirt.Name,
+		powervs.Name,
 		vsphere.Name,
 	}
 	// HiddenPlatformNames is a slice with all the
@@ -42,9 +52,14 @@ var (
 	// to the user in the interactive wizard.
 	HiddenPlatformNames = []string{
 		baremetal.Name,
-		kubevirt.Name,
+		external.Name,
 		none.Name,
 	}
+
+	// FCOS is a setting to enable Fedora CoreOS-only modifications
+	FCOS = false
+	// SCOS is a setting to enable CentOS Stream CoreOS-only modifications
+	SCOS = false
 )
 
 // PublishingStrategy is a strategy for how various endpoints for the cluster are exposed.
@@ -56,6 +71,20 @@ const (
 	ExternalPublishingStrategy PublishingStrategy = "External"
 	// InternalPublishingStrategy exposes the endpoints for the cluster to the private network only.
 	InternalPublishingStrategy PublishingStrategy = "Internal"
+	// MixedPublishingStrategy allows for the api server and the ingress to be configured individually for exposure to
+	// private network or Internet.
+	MixedPublishingStrategy PublishingStrategy = "Mixed"
+)
+
+// PolicyType is for usage polices that are applied to additionalTrustBundle.
+// +kubebuilder:validation:Enum="";Proxyonly;Always
+type PolicyType string
+
+const (
+	// PolicyProxyOnly  enables use of AdditionalTrustBundle when http/https proxy is configured.
+	PolicyProxyOnly PolicyType = "Proxyonly"
+	// PolicyAlways ignores all conditions and uses AdditionalTrustBundle.
+	PolicyAlways PolicyType = "Always"
 )
 
 //go:generate go run ../../vendor/sigs.k8s.io/controller-tools/cmd/controller-gen crd:crdVersions=v1 paths=. output:dir=../../data/data/
@@ -72,6 +101,13 @@ type InstallConfig struct {
 	//
 	// +optional
 	AdditionalTrustBundle string `json:"additionalTrustBundle,omitempty"`
+
+	// AdditionalTrustBundlePolicy determines when to add the AdditionalTrustBundle
+	// to the nodes' trusted certificate store. "Proxyonly" is the default.
+	// The field can be set to following specified values.
+	// "Proxyonly" : adds the AdditionalTrustBundle to nodes when http/https proxy is configured.
+	// "Always" : always adds AdditionalTrustBundle.
+	AdditionalTrustBundlePolicy PolicyType `json:"additionalTrustBundlePolicy,omitempty"`
 
 	// SSHKey is the public Secure Shell (SSH) key to provide access to instances.
 	// +optional
@@ -107,8 +143,13 @@ type InstallConfig struct {
 	Proxy *Proxy `json:"proxy,omitempty"`
 
 	// ImageContentSources lists sources/repositories for the release-image content.
+	// The field is deprecated. Please use imageDigestSources.
 	// +optional
-	ImageContentSources []ImageContentSource `json:"imageContentSources,omitempty"`
+	DeprecatedImageContentSources []ImageContentSource `json:"imageContentSources,omitempty"`
+
+	// ImageDigestSources lists sources/repositories for the release-image content.
+	// +optional
+	ImageDigestSources []ImageDigestSource `json:"imageDigestSources,omitempty"`
 
 	// Publish controls how the user facing endpoints of the cluster like the Kubernetes API, OpenShift routes etc. are exposed.
 	// When no strategy is specified, the strategy is "External".
@@ -117,11 +158,23 @@ type InstallConfig struct {
 	// +optional
 	Publish PublishingStrategy `json:"publish,omitempty"`
 
+	// OperatorPublishingStrategy controls the visibility of ingress and apiserver. Defaults to public.
+	OperatorPublishingStrategy *OperatorPublishingStrategy `json:"operatorPublishingStrategy,omitempty"`
+
 	// FIPS configures https://www.nist.gov/itl/fips-general-information
 	//
 	// +kubebuilder:default=false
 	// +optional
 	FIPS bool `json:"fips,omitempty"`
+
+	// CPUPartitioning determines if a cluster should be setup for CPU workload partitioning at install time.
+	// When this field is set the cluster will be flagged for CPU Partitioning allowing users to segregate workloads to
+	// specific CPU Sets. This does not make any decisions on workloads it only configures the nodes to allow CPU Partitioning.
+	// The "AllNodes" value will setup all nodes for CPU Partitioning, the default is "None".
+	//
+	// +kubebuilder:default="None"
+	// +optional
+	CPUPartitioning CPUPartitioningMode `json:"cpuPartitioningMode,omitempty"`
 
 	// CredentialsMode is used to explicitly set the mode with which CredentialRequests are satisfied.
 	//
@@ -137,10 +190,36 @@ type InstallConfig struct {
 	// For each of the following platforms, the field can set to the specified values. For all other platforms, the
 	// field must not be set.
 	// AWS: "Mint", "Passthrough", "Manual"
-	// Azure: "Mint", "Passthrough", "Manual"
+	// Azure: "Passthrough", "Manual"
+	// AzureStack: "Manual"
 	// GCP: "Mint", "Passthrough", "Manual"
+	// IBMCloud: "Manual"
+	// AlibabaCloud: "Manual"
+	// PowerVS: "Manual"
+	// Nutanix: "Manual"
 	// +optional
 	CredentialsMode CredentialsMode `json:"credentialsMode,omitempty"`
+
+	// BootstrapInPlace is the configuration for installing a single node
+	// with bootstrap in place installation.
+	BootstrapInPlace *BootstrapInPlace `json:"bootstrapInPlace,omitempty"`
+
+	// Capabilities configures the installation of optional core cluster components.
+	// +optional
+	Capabilities *Capabilities `json:"capabilities,omitempty"`
+
+	// FeatureSet enables features that are not part of the default feature set.
+	// Valid values are "Default", "TechPreviewNoUpgrade" and "CustomNoUpgrade".
+	// When omitted, the "Default" feature set is used.
+	// +optional
+	FeatureSet configv1.FeatureSet `json:"featureSet,omitempty"`
+
+	// FeatureGates enables a set of custom feature gates.
+	// May only be used in conjunction with FeatureSet "CustomNoUpgrade".
+	// Features may be enabled or disabled by providing a true or false value for the feature gate.
+	// E.g. "featureGates": ["FeatureGate1=true", "FeatureGate2=false"].
+	// +optional
+	FeatureGates []string `json:"featureGates,omitempty"`
 }
 
 // ClusterDomain returns the DNS domain that all records for a cluster must belong to.
@@ -148,9 +227,45 @@ func (c *InstallConfig) ClusterDomain() string {
 	return fmt.Sprintf("%s.%s", c.ObjectMeta.Name, strings.TrimSuffix(c.BaseDomain, "."))
 }
 
+// IsFCOS returns true if Fedora CoreOS-only modifications are enabled
+func (c *InstallConfig) IsFCOS() bool {
+	return FCOS
+}
+
+// IsSCOS returns true if CentOs Stream CoreOS-only modifications are enabled
+func (c *InstallConfig) IsSCOS() bool {
+	return SCOS
+}
+
+// IsOKD returns true if community-only modifications are enabled
+func (c *InstallConfig) IsOKD() bool {
+	return c.IsFCOS() || c.IsSCOS()
+}
+
+// IsSingleNodeOpenShift returns true if the install-config has been configured for
+// bootstrapInPlace
+func (c *InstallConfig) IsSingleNodeOpenShift() bool {
+	return c.BootstrapInPlace != nil
+}
+
+// CPUPartitioningMode defines how the nodes should be setup for partitioning the CPU Sets.
+// +kubebuilder:validation:Enum=None;AllNodes
+type CPUPartitioningMode string
+
+const (
+	// CPUPartitioningNone means that no CPU Partitioning is on in this cluster infrastructure.
+	CPUPartitioningNone CPUPartitioningMode = "None"
+	// CPUPartitioningAllNodes means that all nodes are configured with CPU Partitioning in this cluster.
+	CPUPartitioningAllNodes CPUPartitioningMode = "AllNodes"
+)
+
 // Platform is the configuration for the specific platform upon which to perform
 // the installation. Only one of the platform configuration should be set.
 type Platform struct {
+	// AlibabaCloud is the configuration used when installing on Alibaba Cloud.
+	// +optional
+	AlibabaCloud *alibabacloud.Platform `json:"alibabacloud,omitempty"`
+
 	// AWS is the configuration used when installing on AWS.
 	// +optional
 	AWS *aws.Platform `json:"aws,omitempty"`
@@ -167,6 +282,10 @@ type Platform struct {
 	// +optional
 	GCP *gcp.Platform `json:"gcp,omitempty"`
 
+	// IBMCloud is the configuration used when installing on IBM Cloud.
+	// +optional
+	IBMCloud *ibmcloud.Platform `json:"ibmcloud,omitempty"`
+
 	// Libvirt is the configuration used when installing on libvirt.
 	// +optional
 	Libvirt *libvirt.Platform `json:"libvirt,omitempty"`
@@ -175,9 +294,17 @@ type Platform struct {
 	// platform.
 	None *none.Platform `json:"none,omitempty"`
 
+	// External is the configuration used when installing on
+	// an external cloud provider.
+	External *external.Platform `json:"external,omitempty"`
+
 	// OpenStack is the configuration used when installing on OpenStack.
 	// +optional
 	OpenStack *openstack.Platform `json:"openstack,omitempty"`
+
+	// PowerVS is the configuration used when installing on Power VS.
+	// +optional
+	PowerVS *powervs.Platform `json:"powervs,omitempty"`
 
 	// VSphere is the configuration used when installing on vSphere.
 	// +optional
@@ -187,9 +314,25 @@ type Platform struct {
 	// +optional
 	Ovirt *ovirt.Platform `json:"ovirt,omitempty"`
 
-	// Kubevirt is the configuration used when installing on kubevirt.
+	// Nutanix is the configuration used when installing on Nutanix.
 	// +optional
-	Kubevirt *kubevirt.Platform `json:"kubevirt,omitempty"`
+	Nutanix *nutanix.Platform `json:"nutanix,omitempty"`
+}
+
+// OperatorPublishingStrategy is used to control the visibility of the components which can be used to have a mix of public
+// and private resources.
+type OperatorPublishingStrategy struct {
+	// Ingress sets the visibility of the created dns resources.
+	// +kubebuilder:validation:Enum="";External;Internal
+	// +kubebuilder:default=External
+	// +optional
+	Ingress string `json:"ingress,omitempty"`
+
+	// APIServer sets the visibility of the load balancers servicing the APIserver.
+	// +kubebuilder:validation:Enum="";External;Internal
+	// +kubebuilder:default=External
+	// +optional
+	APIServer string `json:"apiserver,omitempty"`
 }
 
 // Name returns a string representation of the platform (e.g. "aws" if
@@ -199,6 +342,8 @@ func (p *Platform) Name() string {
 	switch {
 	case p == nil:
 		return ""
+	case p.AlibabaCloud != nil:
+		return alibabacloud.Name
 	case p.AWS != nil:
 		return aws.Name
 	case p.Azure != nil:
@@ -207,18 +352,24 @@ func (p *Platform) Name() string {
 		return baremetal.Name
 	case p.GCP != nil:
 		return gcp.Name
+	case p.IBMCloud != nil:
+		return ibmcloud.Name
 	case p.Libvirt != nil:
 		return libvirt.Name
 	case p.None != nil:
 		return none.Name
+	case p.External != nil:
+		return external.Name
 	case p.OpenStack != nil:
 		return openstack.Name
 	case p.VSphere != nil:
 		return vsphere.Name
 	case p.Ovirt != nil:
 		return ovirt.Name
-	case p.Kubevirt != nil:
-		return kubevirt.Name
+	case p.PowerVS != nil:
+		return powervs.Name
+	case p.Nutanix != nil:
+		return nutanix.Name
 	default:
 		return ""
 	}
@@ -226,17 +377,19 @@ func (p *Platform) Name() string {
 
 // Networking defines the pod network provider in the cluster.
 type Networking struct {
-	// NetworkType is the type of network to install. The default is OpenShiftSDN
+	// NetworkType is the type of network to install.
+	// The default value is OVNKubernetes.
 	//
-	// +kubebuilder:default=OpenShiftSDN
+	// +kubebuilder:default=OVNKubernetes
 	// +optional
 	NetworkType string `json:"networkType,omitempty"`
 
 	// MachineNetwork is the list of IP address pools for machines.
 	// This field replaces MachineCIDR, and if set MachineCIDR must
 	// be empty or match the first entry in the list.
-	// Default is 10.0.0.0/16 for all platforms other than libvirt.
+	// Default is 10.0.0.0/16 for all platforms other than libvirt and Power VS.
 	// For libvirt, the default is 192.168.126.0/24.
+	// For Power VS, the default is 192.168.0.0/24.
 	//
 	// +optional
 	MachineNetwork []MachineNetworkEntry `json:"machineNetwork,omitempty"`
@@ -255,10 +408,17 @@ type Networking struct {
 	// +optional
 	ServiceNetwork []ipnet.IPNet `json:"serviceNetwork,omitempty"`
 
+	// ClusterNetworkMTU is the Maximum Transmit (MTU) Unit size in bytes to allocate to the cluster network.
+	// For example, 1200 would set the MTU of the entire overlay network. If the deployment does
+	// not require changes in the network plugin, leave it unset and the MTU will be calculated
+	// automatically based on the host network MTU.
+	// +optional
+	ClusterNetworkMTU uint32 `json:"clusterNetworkMTU,omitempty"`
+
 	// Deprecated types, scheduled to be removed
 
-	// Deprecated name for MachineCIDRs. If set, MachineCIDRs must
-	// be empty or the first index must match.
+	// Deprecated way to configure an IP address pool for machines.
+	// Replaced by MachineNetwork which allows for multiple pools.
 	// +optional
 	DeprecatedMachineCIDR *ipnet.IPNet `json:"machineCIDR,omitempty"`
 
@@ -266,7 +426,8 @@ type Networking struct {
 	// +optional
 	DeprecatedType string `json:"type,omitempty"`
 
-	// Deprecated name for ServiceNetwork
+	// Deprecated way to configure an IP address pool for services.
+	// Replaced by ServiceNetwork which allows for multiple pools.
 	// +optional
 	DeprecatedServiceCIDR *ipnet.IPNet `json:"serviceCIDR,omitempty"`
 
@@ -316,7 +477,18 @@ type Proxy struct {
 }
 
 // ImageContentSource defines a list of sources/repositories that can be used to pull content.
+// The field is deprecated. Please use imageDigestSources.
 type ImageContentSource struct {
+	// Source is the repository that users refer to, e.g. in image pull specifications.
+	Source string `json:"source"`
+
+	// Mirrors is one or more repositories that may also contain the same images.
+	// +optional
+	Mirrors []string `json:"mirrors,omitempty"`
+}
+
+// ImageDigestSource defines a list of sources/repositories that can be used to pull content.
+type ImageDigestSource struct {
 	// Source is the repository that users refer to, e.g. in image pull specifications.
 	Source string `json:"source"`
 
@@ -341,3 +513,50 @@ const (
 	// cloud credentials for each CredentialsRequest.
 	PassthroughCredentialsMode CredentialsMode = "Passthrough"
 )
+
+// BootstrapInPlace defines the configuration for bootstrap-in-place installation
+type BootstrapInPlace struct {
+	// InstallationDisk is the target disk drive for coreos-installer
+	InstallationDisk string `json:"installationDisk"`
+}
+
+// Capabilities selects the managed set of optional, core cluster components.
+type Capabilities struct {
+	// baselineCapabilitySet selects an initial set of
+	// optional capabilities to enable, which can be extended via
+	// additionalEnabledCapabilities. The default is vCurrent.
+	// +optional
+	BaselineCapabilitySet configv1.ClusterVersionCapabilitySet `json:"baselineCapabilitySet,omitempty"`
+
+	// additionalEnabledCapabilities extends the set of managed
+	// capabilities beyond the baseline defined in
+	// baselineCapabilitySet. The default is an empty set.
+	// +optional
+	AdditionalEnabledCapabilities []configv1.ClusterVersionCapability `json:"additionalEnabledCapabilities,omitempty"`
+}
+
+// WorkerMachinePool retrieves the worker MachinePool from InstallConfig.Compute
+func (c *InstallConfig) WorkerMachinePool() *MachinePool {
+	for _, machinePool := range c.Compute {
+		switch machinePool.Name {
+		case MachinePoolComputeRoleName, MachinePoolEdgeRoleName:
+			return &machinePool
+		}
+	}
+
+	return nil
+}
+
+// EnabledFeatureGates returns a FeatureGate that can be checked (using the Enabled function)
+// to determine if a feature gate is enabled in the current feature sets.
+func (c *InstallConfig) EnabledFeatureGates() featuregates.FeatureGate {
+	var customFS *configv1.CustomFeatureGates
+
+	if c.FeatureSet == configv1.CustomNoUpgrade {
+		customFS = featuregates.GenerateCustomFeatures(c.FeatureGates)
+	}
+
+	fg := featuregates.FeatureGateFromFeatureSets(configv1.FeatureSets, c.FeatureSet, customFS)
+
+	return fg
+}

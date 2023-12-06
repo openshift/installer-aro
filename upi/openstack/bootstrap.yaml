@@ -5,7 +5,7 @@
 # openstacksdk
 # netaddr
 
-- import_playbook: common.yaml
+- ansible.builtin.import_playbook: common.yaml
 
 - hosts: all
   gather_facts: no
@@ -19,6 +19,18 @@
       - "{{ os_sg_master }}"
       allowed_address_pairs:
       - ip_address: "{{ os_apiVIP }}"
+    when: os_subnet6 is not defined
+
+  - name: 'Create the bootstrap dualstack server port'
+    os_port:
+      name: "{{ os_port_bootstrap }}"
+      network: "{{ os_network }}"
+      security_groups:
+      - "{{ os_sg_master }}"
+      allowed_address_pairs:
+      - ip_address: "{{ os_apiVIP }}"
+      - ip_address: "{{ os_apiVIP6 }}"
+    when: os_subnet6 is defined
 
   - name: 'Set bootstrap port tag'
     command:
@@ -39,3 +51,4 @@
       auto_ip: "{{ bootstrap_auto_ip | default(omit) }}"
       nics:
       - port-name: "{{ os_port_bootstrap }}"
+      meta: "{{ cluster_id_tag }}"

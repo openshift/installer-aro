@@ -2,13 +2,14 @@
 # Example:  ./hack/go-genmock.sh
 
 if [ "$IS_CONTAINER" != "" ]; then
+  go install github.com/golang/mock/mockgen
   go generate ./pkg/asset/installconfig/... "${@}"
+  go generate ./pkg/destroy/... "${@}"
 else
-  podman build -t openshift-install-mock ./images/mock
   podman run --rm \
     --env IS_CONTAINER=TRUE \
     --volume "${PWD}:/go/src/github.com/openshift/installer:z" \
     --workdir /go/src/github.com/openshift/installer \
-    openshift-install-mock \
+    docker.io/golang:1.18 \
     ./hack/go-genmock.sh "${@}"
 fi

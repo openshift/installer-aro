@@ -1,12 +1,13 @@
 package terraform
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDiagnose(t *testing.T) {
+func TestDiagnoseApplyError(t *testing.T) {
 	cases := []struct {
 		input string
 		err   string
@@ -97,7 +98,7 @@ Error: could not contact Ironic API: timeout reached
    1: resource "ironic_node_v1" "openshift-master-host" {
 `,
 
-		err: `error\(BaremetalIronicAPITimeout\) from Infrastructure Provider: Timed out waiting for provisioning service\. This failure can be caused by misconfiguration or inability to download the machine operating system images\. Please check the bootstrap host for failing services\.`,
+		err: `error\(BaremetalIronicAPITimeout\) from Infrastructure Provider: Unable to the reach provisioning service\. This failure can be caused by incorrect network/proxy settings, inability to download the machine operating system images, or other misconfiguration\. Please check access to the bootstrap host, and for any failing services\.`,
 	}, {
 		input: `
 Error: could not inspect: could not inspect node, node is currently 'inspect failed', last error was 'timeout reached while inspecting the node'
@@ -111,9 +112,10 @@ Error: could not inspect: could not inspect node, node is currently 'inspect fai
 
 	for _, test := range cases {
 		t.Run("", func(t *testing.T) {
-			err := Diagnose(test.input)
+			inError := errors.New(test.input)
+			err := diagnoseApplyError(inError)
 			if test.err == "" {
-				assert.NoError(t, err)
+				assert.Equal(t, err, inError)
 			} else {
 				assert.Regexp(t, test.err, err)
 			}

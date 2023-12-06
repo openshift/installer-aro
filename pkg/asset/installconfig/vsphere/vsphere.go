@@ -8,16 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/vapi/rest"
 	"github.com/vmware/govmomi/vim25"
-	"gopkg.in/AlecAivazis/survey.v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/openshift/installer/pkg/types/vsphere"
-	vspheretypes "github.com/openshift/installer/pkg/types/vsphere"
 	"github.com/openshift/installer/pkg/validate"
 )
 
@@ -32,15 +30,7 @@ type vCenterClient struct {
 	Password   string
 	Client     *vim25.Client
 	RestClient *rest.Client
-}
-
-// networkNamer declares an interface for the object.Common.Name() function.
-// This is needed because find.NetworkList() returns the interface object.NetworkReference.
-// All of the types that implement object.NetworkReference (OpaqueNetwork,
-// DistributedVirtualPortgroup, & DistributedVirtualSwitch) and perhaps all
-// types in general embed object.Common.
-type networkNamer interface {
-	Name() string
+	Logout     ClientLogout
 }
 
 // Platform collects vSphere-specific configuration.
@@ -49,8 +39,9 @@ func Platform() (*vsphere.Platform, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer vCenter.Logout()
 
-	finder := find.NewFinder(vCenter.Client)
+	finder := NewFinder(vCenter.Client)
 	ctx := context.TODO()
 
 	dc, dcPath, err := getDataCenter(ctx, finder, vCenter.Client)
@@ -68,7 +59,7 @@ func Platform() (*vsphere.Platform, error) {
 		return nil, err
 	}
 
-	network, err := getNetwork(ctx, dcPath, finder, vCenter.Client)
+	network, err := getNetwork(ctx, dc, cluster, finder, vCenter.Client)
 	if err != nil {
 		return nil, err
 	}
@@ -78,17 +69,34 @@ func Platform() (*vsphere.Platform, error) {
 		return nil, errors.Wrap(err, "failed to get VIPs")
 	}
 
-	platform := &vsphere.Platform{
-		Datacenter:       dc,
-		Cluster:          cluster,
-		DefaultDatastore: datastore,
-		Network:          network,
-		VCenter:          vCenter.VCenter,
-		Username:         vCenter.Username,
-		Password:         vCenter.Password,
-		APIVIP:           apiVIP,
-		IngressVIP:       ingressVIP,
+	failureDomain := vsphere.FailureDomain{
+		Name:   "generated-failure-domain",
+		Zone:   "generated-zone",
+		Region: "generated-region",
+		Server: vCenter.VCenter,
+		Topology: vsphere.Topology{
+			Datacenter:     dc,
+			ComputeCluster: cluster,
+			Datastore:      datastore,
+			Networks:       []string{network},
+		},
 	}
+
+	vcenter := vsphere.VCenter{
+		Server:      vCenter.VCenter,
+		Port:        443,
+		Username:    vCenter.Username,
+		Password:    vCenter.Password,
+		Datacenters: []string{dc},
+	}
+
+	platform := &vsphere.Platform{
+		VCenters:       []vsphere.VCenter{vcenter},
+		FailureDomains: []vsphere.FailureDomain{failureDomain},
+		APIVIPs:        []string{apiVIP},
+		IngressVIPs:    []string{ingressVIP},
+	}
+
 	return platform, nil
 }
 
@@ -102,9 +110,11 @@ func getClients() (*vCenterClient, error) {
 		{
 			Prompt: &survey.Input{
 				Message: "vCenter",
-				Help:    "The hostname of the vCenter to be used for installation.",
+				Help:    "The domain name or IP address of the vCenter to be used for installation.",
 			},
-			Validate: survey.Required,
+			Validate: survey.ComposeValidators(survey.Required, func(ans interface{}) error {
+				return validate.Host(ans.(string))
+			}),
 		},
 	}, &vcenter); err != nil {
 		return nil, errors.Wrap(err, "failed UserInput")
@@ -136,7 +146,7 @@ func getClients() (*vCenterClient, error) {
 
 	// There is a noticeable delay when creating the client, so let the user know what's going on.
 	logrus.Infof("Connecting to vCenter %s", vcenter)
-	vim25Client, restClient, err := vspheretypes.CreateVSphereClients(context.TODO(),
+	vim25Client, restClient, logoutFunction, err := CreateVSphereClients(context.TODO(),
 		vcenter,
 		username,
 		password)
@@ -144,7 +154,7 @@ func getClients() (*vCenterClient, error) {
 	// Survey does not allow validation of groups of input
 	// so we perform our own validation.
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to connect to vCenter %s. Ensure provided information is correct and client certs have been added to system trust.", vcenter)
+		return nil, errors.Wrapf(err, "unable to connect to vCenter %s. Ensure provided information is correct and client certs have been added to system trust", vcenter)
 	}
 
 	return &vCenterClient{
@@ -153,13 +163,14 @@ func getClients() (*vCenterClient, error) {
 		Password:   password,
 		Client:     vim25Client,
 		RestClient: restClient,
+		Logout:     logoutFunction,
 	}, nil
 }
 
 // getDataCenter searches the root for all datacenters and, if there is more than one, lets the user select
 // one to use for installation. Returns the name and path of the selected datacenter. The name is used
 // to generate the install config and the path is used to determine the options for cluster, datastore and network.
-func getDataCenter(ctx context.Context, finder *find.Finder, client *vim25.Client) (string, string, error) {
+func getDataCenter(ctx context.Context, finder Finder, client *vim25.Client) (string, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -179,7 +190,7 @@ func getDataCenter(ctx context.Context, finder *find.Finder, client *vim25.Clien
 	}
 
 	dataCenterPaths := make(map[string]string)
-	var dataCenterChoices []string
+	dataCenterChoices := make([]string, 0, len(dataCenters))
 	for _, dc := range dataCenters {
 		name := strings.TrimPrefix(dc.InventoryPath, "/")
 		dataCenterPaths[name] = dc.InventoryPath
@@ -204,7 +215,7 @@ func getDataCenter(ctx context.Context, finder *find.Finder, client *vim25.Clien
 	return selectedDataCenter, dataCenterPaths[selectedDataCenter], nil
 }
 
-func getCluster(ctx context.Context, path string, finder *find.Finder, client *vim25.Client) (string, error) {
+func getCluster(ctx context.Context, path string, finder Finder, client *vim25.Client) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -218,15 +229,13 @@ func getCluster(ctx context.Context, path string, finder *find.Finder, client *v
 		return "", errors.New("did not find any clusters")
 	}
 	if len(clusters) == 1 {
-		name := strings.TrimPrefix(clusters[0].InventoryPath, path+"/host/")
-		logrus.Infof("Defaulting to only available cluster: %s", name)
-		return name, nil
+		logrus.Infof("Defaulting to only available cluster: %s", clusters[0].InventoryPath)
+		return clusters[0].InventoryPath, nil
 	}
 
-	var clusterChoices []string
+	clusterChoices := make([]string, 0, len(clusters))
 	for _, c := range clusters {
-		name := strings.TrimPrefix(c.InventoryPath, path+"/host/")
-		clusterChoices = append(clusterChoices, name)
+		clusterChoices = append(clusterChoices, c.InventoryPath)
 	}
 	sort.Strings(clusterChoices)
 
@@ -247,7 +256,7 @@ func getCluster(ctx context.Context, path string, finder *find.Finder, client *v
 	return selectedcluster, nil
 }
 
-func getDataStore(ctx context.Context, path string, finder *find.Finder, client *vim25.Client) (string, error) {
+func getDataStore(ctx context.Context, path string, finder Finder, client *vim25.Client) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -261,13 +270,13 @@ func getDataStore(ctx context.Context, path string, finder *find.Finder, client 
 		return "", errors.New("did not find any datastores")
 	}
 	if len(dataStores) == 1 {
-		logrus.Infof("Defaulting to only available datastore: %s", dataStores[0].Name())
-		return dataStores[0].Name(), nil
+		logrus.Infof("Defaulting to only available datastore: %s", dataStores[0].InventoryPath)
+		return dataStores[0].InventoryPath, nil
 	}
 
-	var dataStoreChoices []string
+	dataStoreChoices := make([]string, 0, len(dataStores))
 	for _, ds := range dataStores {
-		dataStoreChoices = append(dataStoreChoices, ds.Name())
+		dataStoreChoices = append(dataStoreChoices, ds.InventoryPath)
 	}
 	sort.Strings(dataStoreChoices)
 
@@ -288,11 +297,12 @@ func getDataStore(ctx context.Context, path string, finder *find.Finder, client 
 	return selectedDataStore, nil
 }
 
-func getNetwork(ctx context.Context, path string, finder *find.Finder, client *vim25.Client) (string, error) {
+func getNetwork(ctx context.Context, datacenter string, cluster string, finder Finder, client *vim25.Client) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	networks, err := finder.NetworkList(ctx, formatPath(path))
+	// Get a list of networks from the previously selected Datacenter and Cluster
+	networks, err := GetClusterNetworks(ctx, finder, datacenter, cluster)
 	if err != nil {
 		return "", errors.Wrap(err, "unable to list networks")
 	}
@@ -302,9 +312,12 @@ func getNetwork(ctx context.Context, path string, finder *find.Finder, client *v
 		return "", errors.New("did not find any networks")
 	}
 	if len(networks) == 1 {
-		n := networks[0].(networkNamer)
-		logrus.Infof("Defaulting to only available network: %s", n.Name())
-		return n.Name(), nil
+		n, err := GetNetworkName(ctx, client, networks[0])
+		if err != nil {
+			return "", errors.Wrap(err, "unable to get network name")
+		}
+		logrus.Infof("Defaulting to only available network: %s", n)
+		return n, nil
 	}
 
 	validNetworkTypes := sets.NewString(
@@ -316,8 +329,12 @@ func getNetwork(ctx context.Context, path string, finder *find.Finder, client *v
 	var networkChoices []string
 	for _, network := range networks {
 		if validNetworkTypes.Has(network.Reference().Type) {
-			n := network.(networkNamer)
-			networkChoices = append(networkChoices, n.Name())
+			// Below results in an API call. Can it be eliminated somehow?
+			n, err := GetNetworkName(ctx, client, network)
+			if err != nil {
+				return "", errors.Wrap(err, "unable to get network name")
+			}
+			networkChoices = append(networkChoices, n)
 		}
 	}
 	if len(networkChoices) == 0 {

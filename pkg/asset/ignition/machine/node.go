@@ -6,14 +6,14 @@ import (
 	"net/url"
 
 	ignutil "github.com/coreos/ignition/v2/config/util"
-	igntypes "github.com/coreos/ignition/v2/config/v3_1/types"
+	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	"github.com/vincent-petithory/dataurl"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/installer/pkg/asset/ignition"
 	"github.com/openshift/installer/pkg/types"
 	baremetaltypes "github.com/openshift/installer/pkg/types/baremetal"
-	kubevirttypes "github.com/openshift/installer/pkg/types/kubevirt"
+	nutanixtypes "github.com/openshift/installer/pkg/types/nutanix"
 	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
 	ovirttypes "github.com/openshift/installer/pkg/types/ovirt"
 	vspheretypes "github.com/openshift/installer/pkg/types/vsphere"
@@ -33,17 +33,19 @@ func pointerIgnitionConfig(installConfig *types.InstallConfig, rootCA []byte, ro
 	case baremetaltypes.Name:
 		// Baremetal needs to point directly at the VIP because we don't have a
 		// way to configure DNS before Ignition runs.
-		ignitionHost = net.JoinHostPort(installConfig.BareMetal.APIVIP, "22623")
-	case openstacktypes.Name:
-		ignitionHost = net.JoinHostPort(installConfig.OpenStack.APIVIP, "22623")
-	case ovirttypes.Name:
-		ignitionHost = net.JoinHostPort(installConfig.Ovirt.APIVIP, "22623")
-	case vspheretypes.Name:
-		if installConfig.VSphere.APIVIP != "" {
-			ignitionHost = net.JoinHostPort(installConfig.VSphere.APIVIP, "22623")
+		ignitionHost = net.JoinHostPort(installConfig.BareMetal.APIVIPs[0], "22623")
+	case nutanixtypes.Name:
+		if len(installConfig.Nutanix.APIVIPs) > 0 {
+			ignitionHost = net.JoinHostPort(installConfig.Nutanix.APIVIPs[0], "22623")
 		}
-	case kubevirttypes.Name:
-		ignitionHost = net.JoinHostPort(installConfig.Kubevirt.APIVIP, "22623")
+	case openstacktypes.Name:
+		ignitionHost = net.JoinHostPort(installConfig.OpenStack.APIVIPs[0], "22623")
+	case ovirttypes.Name:
+		ignitionHost = net.JoinHostPort(installConfig.Ovirt.APIVIPs[0], "22623")
+	case vspheretypes.Name:
+		if len(installConfig.VSphere.APIVIPs) > 0 {
+			ignitionHost = net.JoinHostPort(installConfig.VSphere.APIVIPs[0], "22623")
+		}
 	}
 	return &igntypes.Config{
 		Ignition: igntypes.Ignition{

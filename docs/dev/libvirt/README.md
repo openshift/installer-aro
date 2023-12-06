@@ -113,7 +113,7 @@ First, you need to start the libvirtd TCP socket, which is managed by systemd:
 sudo systemctl start libvirtd-tcp.socket
 ```
 
-To make this change persistent accross reboots you can optionally enable it:
+To make this change persistent across reboots you can optionally enable it:
 
 ```sh
 sudo systemctl enable libvirtd-tcp.socket
@@ -189,7 +189,7 @@ Ensure the cluster IP range does not overlap your `virbr0` IP address.
 #### iptables
 
 ```sh
-iptables -I INPUT -p tcp -s 192.168.126.0/24 -d 192.168.122.1 --dport 16509 -j ACCEPT -m comment --comment "Allow insecure libvirt clients"
+sudo iptables -I INPUT -p tcp -s 192.168.126.0/24 -d 192.168.122.1 --dport 16509 -j ACCEPT -m comment --comment "Allow insecure libvirt clients"
 ```
 
 #### Firewalld
@@ -227,9 +227,27 @@ NOTE: When the firewall rules are no longer needed, `sudo firewall-cmd --reload`
 will remove the changes made as they were not permanently added. For persistence,
 add `--permanent` to the `firewall-cmd` commands and run them a second time.
 
-### Set up NetworkManager DNS overlay
+### Set up DNS
 
 This step allows installer and users to resolve cluster-internal hostnames from your host.
+
+#### Using systemd-resolved
+
+If your system is using `systemd-resolved` (the default since Fedora 33), then you can setup DNS without using `dnsmasq`.
+
+Just point `resolvectl` to use `192.168.126.1` for your `baseDomain`. Replace `baseDomain` in the example accordingly.
+
+```sh
+sudo resolvectl dns tt0 192.168.126.1
+sudo resolvectl domain tt0 ~<baseDomain>
+```
+
+Your cluster might run on a different network interface. To find which one it is, either check your `install-config.yaml`
+or run `nmcli` and find the interface that's running the `192.168.126.0/24` net.
+
+Please note that this is not persistent across libvirt network creation/deletion of the tt0 interface. Once the tt0 interface is deleted and recreated, it will need to be updated again with the proper resolver.
+
+#### Using NetworkManager DNS overlay
 
 1. Tell NetworkManager to use `dnsmasq`:
 
@@ -345,6 +363,18 @@ server=/tt.testing/192.168.126.1
 address=/.apps.tt.testing/192.168.126.51
 ```
 
+- An alternate method to specify the dnsmasq option, if the system is using libvirt version 5.6.0+, is to specify the option in the install config under the platform's network section in the following way.
+
+```
+    platform:
+      libvirt:
+        network:
+          dnsmasqOptions:
+          - name: "address"
+            value: "/.apps.tt.testing/192.168.126.51"
+          if: tt0
+```
+
 - Make sure you restart the NetworkManager after change in `openshift.conf`:
 
 ```console
@@ -385,7 +415,7 @@ FATA[0019] failed to run Terraform: exit status 1
 
 it is likely that your install configuration contains three backslashes after the protocol (e.g. `qemu+tcp:///...`), when it should only be two.
 
-### Random domain creation errors due to libvirt race conditon
+### Random domain creation errors due to libvirt race condition
 
 Depending on your libvirt version you might encounter [a race condition][bugzilla_libvirt_race] leading to an error similar to:
 
@@ -415,7 +445,7 @@ error: internal error: Failed to initialize a valid firewall backend
 
 please check out [this thread on superuser][arch_firewall_superuser].
 
-### Github Issue Tracker
+### GitHub Issue Tracker
 
 You might find other reports of your problem in the [Issues tab for this repository][issues_libvirt] where we ask you to provide any additional information.
 If your issue is not reported, please do.

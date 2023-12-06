@@ -11,10 +11,15 @@ import (
 
 	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/go-playground/validator/v10"
+	"github.com/metal3-io/baremetal-operator/pkg/hardwareutils/bmc"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"sigs.k8s.io/yaml"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/ipnet"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/baremetal"
@@ -40,6 +45,17 @@ func validateIPinMachineCIDR(vip string, n *types.Networking) error {
 	}
 
 	return fmt.Errorf("IP expected to be in one of the machine networks: %s", strings.Join(networks, ","))
+}
+
+func validateCIDRSize(p *baremetal.Platform) error {
+	provisionNetworkCIDR := &p.ProvisioningNetworkCIDR.IPNet
+	if p.ProvisioningNetwork == baremetal.ManagedProvisioningNetwork {
+		cidrSize, _ := provisionNetworkCIDR.Mask.Size()
+		if cidrSize < 64 && provisionNetworkCIDR.IP.To4() == nil && provisionNetworkCIDR.IP.To16() != nil {
+			return fmt.Errorf("provisioningNetworkCIDR mask must be greater than or equal to 64 for IPv6 networks")
+		}
+	}
+	return nil
 }
 
 func validateIPNotinMachineCIDR(ip string, n *types.Networking) error {
@@ -259,24 +275,75 @@ func validateOSImages(p *baremetal.Platform, fldPath *field.Path) field.ErrorLis
 	return platformErrs
 }
 
-func validateHostsCount(hosts []*baremetal.Host, installConfig *types.InstallConfig) error {
-
-	hostsNum := int64(len(hosts))
-	counter := int64(0)
-
-	for _, worker := range installConfig.Compute {
-		if worker.Replicas != nil {
-			counter += *worker.Replicas
+func validateHostsName(hosts []*baremetal.Host, fldPath *field.Path) (errors field.ErrorList) {
+	for idx, host := range hosts {
+		validationMessages := validation.IsDNS1123Subdomain(host.Name)
+		if len(validationMessages) != 0 {
+			msg := strings.Join(validationMessages, "\n")
+			errors = append(errors, field.Invalid(fldPath.Index(idx).Child("name"), host.Name, msg))
 		}
 	}
+	return
+}
+
+// ensure that the number of hosts is enough to cover the ControlPlane
+// and Compute replicas. Hosts without role will be considered eligible
+// for the ControlPlane or Compute requirements.
+func validateHostsCount(hosts []*baremetal.Host, installConfig *types.InstallConfig) error {
+
+	numRequiredMasters := int64(0)
 	if installConfig.ControlPlane != nil && installConfig.ControlPlane.Replicas != nil {
-		counter += *installConfig.ControlPlane.Replicas
+		numRequiredMasters += *installConfig.ControlPlane.Replicas
 	}
-	if hostsNum < counter {
-		return fmt.Errorf("not enough hosts found (%v) to support all the configured ControlPlane and Compute replicas (%v)", hostsNum, counter)
+
+	numRequiredWorkers := int64(0)
+	for _, worker := range installConfig.Compute {
+		if worker.Replicas != nil {
+			numRequiredWorkers += *worker.Replicas
+		}
+	}
+
+	numMasters := int64(0)
+	numWorkers := int64(0)
+
+	for _, h := range hosts {
+		if h.IsMaster() {
+			numMasters++
+		} else if h.IsWorker() {
+			numWorkers++
+		} else {
+			logrus.Warn(fmt.Sprintf("Host %s hasn't any role configured", h.Name))
+			if numMasters < numRequiredMasters {
+				numMasters++
+			} else if numWorkers < numRequiredWorkers {
+				numWorkers++
+			}
+		}
+	}
+
+	if numMasters < numRequiredMasters {
+		return fmt.Errorf("not enough hosts found (%v) to support all the configured ControlPlane replicas (%v)", numMasters, numRequiredMasters)
+	}
+
+	if numWorkers < numRequiredWorkers {
+		return fmt.Errorf("not enough hosts found (%v) to support all the configured Compute replicas (%v)", numWorkers, numRequiredWorkers)
 	}
 
 	return nil
+}
+
+// ensure that the NetworkConfig field contains a valid Yaml string
+func validateNetworkConfig(hosts []*baremetal.Host, fldPath *field.Path) (errors field.ErrorList) {
+	for idx, host := range hosts {
+		if host.NetworkConfig != nil {
+			networkConfig := make(map[string]interface{})
+			err := yaml.Unmarshal(host.NetworkConfig.Raw, &networkConfig)
+			if err != nil {
+				errors = append(errors, field.Invalid(fldPath.Index(idx).Child("networkConfig"), host.NetworkConfig, fmt.Sprintf("Not a valid yaml: %s", err.Error())))
+			}
+		}
+	}
+	return
 }
 
 // ensure that the bootMode field contains a valid value
@@ -284,15 +351,70 @@ func validateBootMode(hosts []*baremetal.Host, fldPath *field.Path) (errors fiel
 	for idx, host := range hosts {
 		switch host.BootMode {
 		case "", baremetal.UEFI, baremetal.Legacy:
+		case baremetal.UEFISecureBoot:
+			accessDetails, err := bmc.NewAccessDetails(host.BMC.Address, host.BMC.DisableCertificateVerification)
+			if err == nil && !accessDetails.SupportsSecureBoot() {
+				msg := fmt.Sprintf("driver %s does not support UEFI secure boot", accessDetails.Driver())
+				errors = append(errors, field.Invalid(fldPath.Index(idx).Child("bootMode"), host.BootMode, msg))
+			}
+			// if access details cannot be constructed, this should be reported elsewhere
 		default:
-			errors = append(errors, field.Invalid(fldPath.Index(idx).Child("bootMode"), host.BootMode, "bootMode must be one of \"UEFI\" or \"legacy\""))
+			valid := []string{string(baremetal.UEFI), string(baremetal.UEFISecureBoot), string(baremetal.Legacy)}
+			errors = append(errors, field.NotSupported(fldPath.Index(idx).Child("bootMode"), host.BootMode, valid))
 		}
 	}
 	return
 }
 
+// ValidateHostRootDeviceHints checks that a rootDeviceHints field contains no
+// invalid values.
+func ValidateHostRootDeviceHints(rdh *baremetal.RootDeviceHints, fldPath *field.Path) (errors field.ErrorList) {
+	if rdh == nil || rdh.DeviceName == "" {
+		return
+	}
+	devField := fldPath.Child("deviceName")
+	subpath := strings.TrimPrefix(rdh.DeviceName, "/dev/")
+	if rdh.DeviceName == subpath {
+		errors = append(errors, field.Invalid(devField, rdh.DeviceName,
+			"Device Name of root device hint must be a /dev/ path"))
+	}
+
+	subpath = strings.TrimPrefix(subpath, "disk/by-path/")
+	if strings.Contains(subpath, "/") {
+		errors = append(errors, field.Invalid(devField, rdh.DeviceName,
+			"Device Name of root device hint must be path in /dev/ or /dev/disk/by-path/"))
+	}
+	return
+}
+
+// ensure that none of the rootDeviceHints fields contain invalid values.
+func validateRootDeviceHints(hosts []*baremetal.Host, fldPath *field.Path) (errors field.ErrorList) {
+	for idx, host := range hosts {
+		if host == nil || host.RootDeviceHints == nil {
+			continue
+		}
+		errors = append(errors, ValidateHostRootDeviceHints(host.RootDeviceHints, fldPath.Index(idx).Child("rootDeviceHints"))...)
+	}
+	return
+}
+
+// validateProvisioningNetworkDisabledSupported validates hosts bmc address support provisioning network is disabled
+func validateProvisioningNetworkDisabledSupported(hosts []*baremetal.Host, fldPath *field.Path) (errors field.ErrorList) {
+	for idx, host := range hosts {
+		accessDetails, err := bmc.NewAccessDetails(host.BMC.Address, host.BMC.DisableCertificateVerification)
+		if err != nil {
+			errors = append(errors, field.Invalid(fldPath.Index(idx).Child("BMC"), host.BMC.Address, err.Error()))
+		} else if accessDetails.RequiresProvisioningNetwork() {
+			msg := fmt.Sprintf("driver %s requires provisioning network", accessDetails.Driver())
+			errors = append(errors, field.Invalid(fldPath.Index(idx).Child("BMC"), host.BMC.Address, msg))
+		}
+	}
+
+	return
+}
+
 // ValidatePlatform checks that the specified platform is valid.
-func ValidatePlatform(p *baremetal.Platform, n *types.Networking, fldPath *field.Path, c *types.InstallConfig) field.ErrorList {
+func ValidatePlatform(p *baremetal.Platform, agentBasedInstallation bool, n *types.Networking, fldPath *field.Path, c *types.InstallConfig) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	provisioningNetwork := sets.NewString(string(baremetal.ManagedProvisioningNetwork),
@@ -315,7 +437,7 @@ func ValidatePlatform(p *baremetal.Platform, n *types.Networking, fldPath *field
 		}
 	}
 
-	if p.Hosts == nil {
+	if !agentBasedInstallation && p.Hosts == nil {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("hosts"), p.Hosts, "bare metal hosts are missing"))
 	}
 
@@ -323,31 +445,42 @@ func ValidatePlatform(p *baremetal.Platform, n *types.Networking, fldPath *field
 		allErrs = append(allErrs, ValidateMachinePool(p.DefaultMachinePlatform, fldPath.Child("defaultMachinePlatform"))...)
 	}
 
-	if err := validate.IP(p.APIVIP); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("apiVIP"), p.APIVIP, err.Error()))
+	if !agentBasedInstallation {
+		if err := validateHostsCount(p.Hosts, c); err != nil {
+			allErrs = append(allErrs, field.Required(fldPath.Child("Hosts"), err.Error()))
+		}
+		allErrs = append(allErrs, validateHostsWithoutBMC(p.Hosts, fldPath)...)
+		allErrs = append(allErrs, validateBootMode(p.Hosts, fldPath.Child("Hosts"))...)
+		allErrs = append(allErrs, validateRootDeviceHints(p.Hosts, fldPath.Child("Hosts"))...)
+		allErrs = append(allErrs, validateNetworkConfig(p.Hosts, fldPath.Child("Hosts"))...)
+
+		allErrs = append(allErrs, validateHostsName(p.Hosts, fldPath.Child("Hosts"))...)
 	}
 
-	if err := validateIPinMachineCIDR(p.APIVIP, n); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("apiVIP"), p.APIVIP, err.Error()))
+	// Platform fields only allowed in TechPreviewNoUpgrade
+	if c.FeatureSet != configv1.TechPreviewNoUpgrade {
+		if c.BareMetal.LoadBalancer != nil {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Child("loadBalancer"), "load balancer is not supported in this feature set"))
+		}
 	}
 
-	if err := validate.IP(p.IngressVIP); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("ingressVIP"), p.IngressVIP, err.Error()))
+	if c.BareMetal.LoadBalancer != nil {
+		if !validateLoadBalancer(c.BareMetal.LoadBalancer.Type) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("loadBalancer", "type"), c.BareMetal.LoadBalancer.Type, "invalid load balancer type"))
+		}
 	}
-
-	if err := validateIPinMachineCIDR(p.IngressVIP, n); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("ingressVIP"), p.IngressVIP, err.Error()))
-	}
-
-	if err := validateHostsCount(p.Hosts, c); err != nil {
-		allErrs = append(allErrs, field.Required(fldPath.Child("Hosts"), err.Error()))
-	}
-
-	allErrs = append(allErrs, validateHostsWithoutBMC(p.Hosts, fldPath)...)
-
-	allErrs = append(allErrs, validateBootMode(p.Hosts, fldPath.Child("Hosts"))...)
 
 	return allErrs
+}
+
+// validateLoadBalancer returns an error if the load balancer is not valid.
+func validateLoadBalancer(lbType configv1.PlatformLoadBalancerType) bool {
+	switch lbType {
+	case configv1.LoadBalancerTypeOpenShiftManagedDefault, configv1.LoadBalancerTypeUserManaged:
+		return true
+	default:
+		return false
+	}
 }
 
 // ValidateProvisioning checks that provisioning network requirements specified is valid.
@@ -359,6 +492,8 @@ func ValidateProvisioning(p *baremetal.Platform, n *types.Networking, fldPath *f
 	// will be run on the external network. Users must provide IP's on the
 	// machine networks to host those services.
 	case baremetal.DisabledProvisioningNetwork:
+		allErrs = validateProvisioningNetworkDisabledSupported(p.Hosts, fldPath.Child("Hosts"))
+
 		// If set, ensure bootstrapProvisioningIP is in one of the machine networks
 		if p.BootstrapProvisioningIP != "" {
 			if err := validateIPinMachineCIDR(p.BootstrapProvisioningIP, n); err != nil {
@@ -373,6 +508,11 @@ func ValidateProvisioning(p *baremetal.Platform, n *types.Networking, fldPath *f
 			}
 		}
 	default:
+		// Ensure provisioningNetworkCIDR mask is >= 64 for managed ipv6 networks due to a dnsmasq limitation
+		if err := validateCIDRSize(p); err != nil {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningNetworkCIDR"), p.ProvisioningNetworkCIDR.String(), err.Error()))
+		}
+
 		// Ensure provisioningNetworkCIDR doesn't overlap with any machine network
 		if err := validateNoOverlapMachineCIDR(&p.ProvisioningNetworkCIDR.IPNet, n); err != nil {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningNetworkCIDR"), p.ProvisioningNetworkCIDR.String(), err.Error()))
@@ -388,16 +528,20 @@ func ValidateProvisioning(p *baremetal.Platform, n *types.Networking, fldPath *f
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("clusterProvisioningIP"), p.ClusterProvisioningIP, fmt.Sprintf("%q is not in the provisioning network", p.ClusterProvisioningIP)))
 		}
 
+		// Ensure provisioningNetworkCIDR does not have any host bits set
+		expectedIP := p.ProvisioningNetworkCIDR.IP.Mask(p.ProvisioningNetworkCIDR.Mask)
+		expectedLen, _ := p.ProvisioningNetworkCIDR.Mask.Size()
+		if !p.ProvisioningNetworkCIDR.IP.Equal(expectedIP) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningNetworkCIDR"), p.ProvisioningNetworkCIDR,
+				fmt.Sprintf("provisioningNetworkCIDR has host bits set, expected %s/%d", expectedIP, expectedLen)))
+		}
+
 		if err := validateIPNotinMachineCIDR(p.BootstrapProvisioningIP, n); err != nil {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("bootstrapProvisioningIP"), p.BootstrapProvisioningIP, err.Error()))
 		}
 
 		if p.ProvisioningDHCPRange != "" {
 			allErrs = append(allErrs, validateDHCPRange(p, fldPath)...)
-		}
-		// Make sure the provisioning interface is set.  Very little we can do to validate this  as it's not on this machine.
-		if p.ProvisioningNetworkInterface == "" {
-			allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningNetworkInterface"), p.ProvisioningNetworkInterface, "no provisioning network interface is configured, please set this value to be the interface on the provisioning network on your cluster's baremetal hosts"))
 		}
 
 		if err := validate.MAC(p.ExternalMACAddress); p.ExternalMACAddress != "" && err != nil {

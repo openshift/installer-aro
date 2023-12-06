@@ -1,7 +1,7 @@
 # OpenStack Platform Support
 
 This document discusses the requirements, current expected behavior, and how to try out what exists so far.
-In addition, it covers the installation with the default CNI (OpenShiftSDN), as well as with the Kuryr SDN.
+It covers the installation with the default CNI (OVNKubernetes).
 
 ## Table of Contents
 
@@ -18,6 +18,7 @@ In addition, it covers the installation with the default CNI (OpenShiftSDN), as 
     - [Nova Metadata Service](#nova-metadata-service)
     - [Glance Service](#glance-service)
   - [OpenStack Credentials](#openstack-credentials)
+    - [OpenStack credentials update](#openstack-credentials-update)
     - [Self Signed OpenStack CA certificates](#self-signed-openstack-ca-certificates)
   - [Standalone Single-Node Development Environment](#standalone-single-node-development-environment)
   - [Running The Installer](#running-the-installer)
@@ -36,26 +37,57 @@ In addition, it covers the installation with the default CNI (OpenShiftSDN), as 
     - [Destroying The Cluster](#destroying-the-cluster)
   - [Post Install Operations](#post-install-operations)
     - [Adding a MachineSet](#adding-a-machineset)
+      - [Defining a MachineSet That Uses Multiple Networks](#defining-a-machineset-that-uses-multiple-networks)
       - [Using a Server Group](#using-a-server-group)
       - [Setting Nova Availability Zones](#setting-nova-availability-zones)
     - [Using a Custom External Load Balancer](#using-a-custom-external-load-balancer)
-    - [Refreshing a CA Certificate](#refreshing-a-ca-certificate)
+      - [External Facing OpenShift Services](#external-facing-openshift-services)
+      - [HAProxy Example Load Balancer Config](#haproxy-example-load-balancer-config)
+      - [DNS Lookups](#dns-lookups)
+      - [Verifying that the API is Reachable](#verifying-that-the-api-is-reachable)
+      - [Verifying that Apps Reachable](#verifying-that-apps-reachable)
+    - [Reconfiguring cloud provider](#reconfiguring-cloud-provider)
+      - [Modifying cloud provider options](#modifying-cloud-provider-options)
+      - [Refreshing a CA Certificate](#refreshing-a-ca-certificate)
+    - [Control Plane node migration](#control-plane-node-migration)
   - [Reporting Issues](#reporting-issues)
 
 ## Reference Documents
 
 - [Privileges](privileges.md)
+- [Control plane machine set](control-plane-machine-set.md)
 - [Known Issues and Workarounds](known-issues.md)
-- [Using the OSP 4 installer with Kuryr](kuryr.md)
 - [Troubleshooting your cluster](troubleshooting.md)
 - [Customizing your install](customization.md)
 - [Installing OpenShift on OpenStack User-Provisioned Infrastructure](install_upi.md)
-- [Learn about the OpenShift on OpenStack networking infrastructure design](../../design/openstack/networking-infrastructure.md)
 - [Deploying OpenShift bare-metal workers](deploy_baremetal_workers.md)
+- [Deploying OpenShift single root I/O virtualization (SRIOV) workers](deploy_sriov_workers.md)
+- [Deploying OpenShift with OVS-DPDK](ovs-dpdk.md)
+- [Deploying OpenShift with an external load balancer](external_load_balancer.md)
+- [Provider Networks](provider_networks.md)
+- [Migrate the Image Registry from Cinder to Swift](image-registry-storage-swift.md)
+- [Image Registry With A Custom PVC Backend](image_registry_with_custom_pvc_backends.md)
+- [Adding Worker Nodes By Hand](add_worker_nodes_by_hand.md)
+- [Connecting workers nodes and pods to an IPv6 network](connect_nodes_to_ipv6_network.md)
+- [Connecting worker nodes to a dedicated Manila network](connect_nodes_to_manila_network.md)
+- [Learn about the OpenShift on OpenStack networking infrastructure design](../../design/openstack/networking-infrastructure.md)
+- [Deploying OpenShift vGPU workers](vgpu.md)
 
 ## OpenStack Requirements
 
-In order to run the latest version of the installer in OpenStack, at a bare minimum you need the following quota to run a *default* cluster. While it is possible to run the cluster with fewer resources than this, it is not recommended. Certain cases, such as deploying [without FIPs](#without-floating-ips), or deploying with an [external load balancer](#using-an-external-load-balancer) are documented below, and are not included in the scope of this recommendation. If you are planning on using Kuryr, or want to learn more about it, please read through the [Kuryr documentation](kuryr.md). **NOTE: The installer has been tested and developed on Red Hat OSP 13.**
+The OpenShift installation on OpenStack platform relies on a number of core
+services being available:
+
+- Keystone
+- Neutron
+- Nova
+  - with Metadata service enabled
+- Glance
+- Storage solution for the image registry, one of:
+  - Swift
+  - Cinder
+
+In order to run the latest version of the installer in OpenStack, at a bare minimum you need the following quota to run a *default* cluster. While it is possible to run the cluster with fewer resources than this, it is not recommended. Certain cases, such as deploying [without FIPs](#without-floating-ips), or deploying with an [external load balancer](#using-an-external-load-balancer) are documented below, and are not included in the scope of this recommendation.
 
 For a successful installation it is required:
 
@@ -64,15 +96,17 @@ For a successful installation it is required:
 - Security Group Rules: 60
 - Routers: 1
 - Subnets: 1
-- Server Groups: 1
+- Server Groups: 2, plus one per additional Availability zone in each machine-pool
 - RAM: 112 GB
 - vCPUs: 28
-- Volume Storage: 175 GB
+- Volume Storage: 700 GB
 - Instances: 7
 - Depending on the type of [image registry backend](#image-registry-requirements) either 1 Swift container or an additional 100 GB volume.
 - OpenStack resource tagging
 
-**NOTE:** The installer will check OpenStack quota limits to make sure that the requested resources can be created. Note that it won't check for resource availability in the cloud, but only on the quotas.
+> **Note**
+> The installer will check OpenStack quota limits to make sure that the requested resources can be created.
+> Note that it won't check for resource availability in the cloud, but only on the quotas.
 
 You may need to increase the security group related quotas from their default values. For example (as an OpenStack administrator):
 
@@ -84,19 +118,21 @@ Once you configure the quota for your project, please ensure that the user for t
 
 ### Master Nodes
 
-The default deployment stands up 3 master nodes, which is the minimum amount required for a cluster. For each master node you stand up, you will need 1 instance, and 1 port available in your quota. They should be assigned a flavor with at least 16 GB RAM, 4 vCPUs, and 25 GB Disk (or Root Volume). It is theoretically possible to run with a smaller flavor, but be aware that if it takes too long to stand up services, or certain essential services crash, the installer could time out, leading to a failed install.
+The default deployment stands up 3 master nodes, which is the minimum amount required for a cluster. For each master node you stand up, you will need 1 instance, and 1 port available in your quota. They should be assigned a flavor with at least 16 GB RAM, 4 vCPUs, and 100 GB Disk (or Root Volume). It is theoretically possible to run with a smaller flavor, but be aware that if it takes too long to stand up services, or certain essential services crash, the installer could time out, leading to a failed install.
 
-The Master Nodes are placed in a single Server Group with "soft anti-affinity" policy; the machines will therefore be creted on separate hosts when possible.
+The master nodes are placed in a single Server group with "soft anti-affinity" policy by default; the machines will therefore be created on separate hosts when possible. Note that this is also the case when the master nodes are deployed across multiple availability zones that were specified by their failure domain.
 
 ### Worker Nodes
 
-The default deployment stands up 3 worker nodes. Worker nodes host the applications you run on OpenShift. The flavor assigned to the worker nodes should have at least 2 vCPUs, 8 GB RAM and 25 GB Disk (or Root Volume). However, if you are experiencing `Out Of Memory` issues, or your installs are timing out, try increasing the size of your flavor to match the master nodes: 4 vCPUs and 16 GB RAM.
+The default deployment stands up 3 worker nodes. Worker nodes host the applications you run on OpenShift. The flavor assigned to the worker nodes should have at least 2 vCPUs, 8 GB RAM and 100 GB Disk (or Root Volume). However, if you are experiencing `Out Of Memory` issues, or your installs are timing out, try increasing the size of your flavor to match the master nodes: 4 vCPUs and 16 GB RAM.
+
+The worker nodes are placed in a single Server group with "soft anti-affinity" policy by default; the machines will therefore be created on separate hosts when possible.
 
 See the [OpenShift documentation](https://docs.openshift.com/container-platform/4.4/architecture/control-plane.html#defining-workers_control-plane) for more information on the worker nodes.
 
 ### Bootstrap Node
 
-The bootstrap node is a temporary node that is responsible for standing up the control plane on the masters. Only one bootstrap node will be stood up and it will be deprovisioned once the production control plane is ready. To do so, you need 1 instance, and 1 port. We recommend a flavor with a minimum of 16 GB RAM, 4 vCPUs, and 25 GB Disk (or Root Volume).
+The bootstrap node is a temporary node that is responsible for standing up the control plane on the masters. Only one bootstrap node will be stood up and it will be deprovisioned once the production control plane is ready. To do so, you need 1 instance, and 1 port. We recommend a flavor with a minimum of 16 GB RAM, 4 vCPUs, and 100 GB Disk (or Root Volume).
 
 ### Image Registry Requirements
 
@@ -110,7 +146,22 @@ openstack role add --user <user> --project <project> swiftoperator
 
 If Swift is not available, the [PVC](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims) storage is used as the backend. For this purpose, a persistent volume of 100 GB will be created in Cinder and mounted to the image registry pod during the installation.
 
-**Note:** Since Cinder supports only [ReadWriteOnce](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes) access mode, it's not possible to have more than one replica of the image registry pod.
+> **Note**
+> If you are deploying a cluster in an Availability Zone where Swift isn't available but where Cinder is,
+> it is recommended to deploy the Image Registry with Cinder backend.
+> It will try to schedule the volume into the same AZ as the Nova zone where the PVC is located;
+> otherwise it'll pick the default availability zone.
+> If needed, the Image registry can be moved to another availability zone by a day 2 operation.
+
+If you want to force Cinder to be used as a backend for the Image Registry, you need to remove the `swiftoperator` permissions. As an OpenStack administrator:
+
+```sh
+openstack role remove --user <user> --project <project> swiftoperator
+```
+
+> **Note**
+> Since Cinder supports only [ReadWriteOnce](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes) access mode,
+> it's not possible to have more than one replica of the image registry pod.
 
 ### Disk Requirements
 
@@ -177,7 +228,9 @@ openstack network list --long -c ID -c Name -c "Router Type"
 +--------------------------------------+----------------+-------------+
 ```
 
-**NOTE:** If the `neutron` `trunk` service plug-in is enabled, trunk port will be created by default. For more information, please refer to [neutron trunk port](https://wiki.openstack.org/wiki/Neutron/TrunkPort).
+> **Note**
+> If the Neutron `trunk` service plug-in is enabled, trunk port will be created by default.
+> For more information, please refer to [neutron trunk port](https://wiki.openstack.org/wiki/Neutron/TrunkPort).
 
 ### Nova Metadata Service
 
@@ -225,16 +278,23 @@ clouds:
 The file can contain information about several clouds. For instance, the example above describes two clouds: `shiftstack` and `dev-evn`.
 In order to determine which cloud to use, the user can either specify it in the `install-config.yaml` file under `platform.openstack.cloud` or with `OS_CLOUD` environment variable. If both are omitted, then the cloud name defaults to `openstack`.
 
-### Self Signed OpenStack CA certificates
+### OpenStack credentials update
 
-If your OpenStack cluster uses self signed CA certificates for endpoint authentication, you will need a few additional steps to run the installer. First, make sure that the host running the installer trusts your CA certificates. If you want more information on how to do this, refer to the [Red Hat OpenStack Plaform documentation](https://access.redhat.com/documentation/en-us/red_hat_openstack_platform/13/html/director_installation_and_usage/appe-ssltls_certificate_configuration#Adding_the_Certificate_Authority_to_Clients). In the future, we plan to modify the installer to be able to trust certificates independently of the host OS.
+To update the OpenStack credentials on a running OpenShift cluster, upload the new `clouds.yaml` to the `openstack-credentials` secret in the `kube-system` namespace.
 
-```sh
-sudo cp ca.crt.pem /etc/pki/ca-trust/source/anchors/
-sudo update-ca-trust extract
+For example:
+
+```
+oc set data -n kube-system secret/openstack-credentials clouds.yaml="$(<path/to/clouds.yaml)"
 ```
 
-Next, you should add the `cacert` key to your `clouds.yaml`. Its value should be a valid path to your CA cert that does not require root privilege to read. The path can be either absolute, or relative to the current working directory while running the installer.
+Please note that the credentials MUST be in the `openstack` stanza of `clouds`.
+
+### Self Signed OpenStack CA certificates
+
+If your OpenStack cluster uses self signed CA certificates for endpoint authentication, add the `cacert` key to your `clouds.yaml`. Its value should be a valid path to your CA cert, and the file should be readable by the user who runs the installer. The path can be either absolute, or relative to the current working directory while running the installer.
+
+For example:
 
 ```yaml
 clouds:
@@ -284,20 +344,23 @@ The third floating IP is created automatically by the installer and will be dest
 
 ##### Create API and Ingress Floating IP Addresses
 
-The deployed OpenShift cluster will need two floating IP addresses, one to attach to the API load balancer (lb FIP), and one for the OpenShift applications (apps FIP). Note that the LB FIP is the IP address you will add to your `install-config.yaml` or select in the interactive installer prompt.
+The deployed OpenShift cluster will need two floating IP addresses: one to attach to the API load balancer (`apiFloatingIP`) and one for the OpenShift applications (`ingressFloatingIP`). Note that `apiFloatingIP` is the IP address you will add to your `install-config.yaml` or select in the interactive installer prompt.
 
 You can create them like so:
 
 ```sh
 openstack floating ip create --description "API <cluster name>.<base domain>" <external network>
-# => <lb FIP>
+# => <apiFloatingIP>
 openstack floating ip create --description "Ingress <cluster name>.<base domain>" <external network>
-# => <apps FIP>
+# => <ingressFloatingIP>
 ```
 
-**NOTE:** These IP addresses will **not** show up attached to any particular server (e.g. when running `openstack server list`). Similarly, the API and Ingress ports will always be in the `DOWN` state.
-
-This is because the ports are not attached to the servers directly. Instead, their fixed IP addresses are managed by keepalived. This has no record in Neutron's database and as such, is not visible to OpenStack.
+> **Note**
+> These IP addresses will **not** show up attached to any particular server (e.g. when running `openstack server list`).
+> Similarly, the API and Ingress ports will always be in the `DOWN` state.
+> This is because the ports are not attached to the servers directly.
+> Instead, their fixed IP addresses are managed by keepalived.
+> This has no record in Neutron's database and as such, is not visible to OpenStack.
 
 *The network traffic will flow through even though the IPs and ports do not show up in the servers*.
 
@@ -308,23 +371,24 @@ For more details, read the [OpenShift on OpenStack networking infrastructure des
 You will also need to add the following records to your DNS:
 
 ```dns
-api.<cluster name>.<base domain>.  IN  A  <lb FIP>
-*.apps.<cluster name>.<base domain>.  IN  A  <apps FIP>
+api.<cluster name>.<base domain>.  IN  A  <apiFloatingIP>
+*.apps.<cluster name>.<base domain>.  IN  A  <ingressFloatingIP>
 ```
 
 If you're unable to create and publish these DNS records, you can add them to your `/etc/hosts` file.
 
 ```dns
-<lb FIP> api.<cluster name>.<base domain>
-<apps FIP> console-openshift-console.apps.<cluster name>.<base domain>
-<apps FIP> integrated-oauth-server-openshift-authentication.apps.<cluster name>.<base domain>
-<apps FIP> oauth-openshift.apps.<cluster name>.<base domain>
-<apps FIP> prometheus-k8s-openshift-monitoring.apps.<cluster name>.<base domain>
-<apps FIP> grafana-openshift-monitoring.apps.<cluster name>.<base domain>
-<apps FIP> <app name>.apps.<cluster name>.<base domain>
+<apiFloatingIP> api.<cluster name>.<base domain>
+<ingressFloatingIP> console-openshift-console.apps.<cluster name>.<base domain>
+<ingressFloatingIP> integrated-oauth-server-openshift-authentication.apps.<cluster name>.<base domain>
+<ingressFloatingIP> oauth-openshift.apps.<cluster name>.<base domain>
+<ingressFloatingIP> prometheus-k8s-openshift-monitoring.apps.<cluster name>.<base domain>
+<ingressFloatingIP> grafana-openshift-monitoring.apps.<cluster name>.<base domain>
+<ingressFloatingIP> <app name>.apps.<cluster name>.<base domain>
 ```
 
-**WARNING:** *this workaround will make the API accessible only to the computer with these `/etc/hosts` entries. This is fine for your own testing (and it is enough for the installation to succeed), but it is not enough for a production deployment. In addition, if you create new OpenShift apps or routes, you will have to add their entries too, because `/etc/hosts` does not support wildcard entries.*
+> **WARNING:**
+> *This workaround will make the API accessible only to the computer with these `/etc/hosts` entries. This is fine for your own testing (and it is enough for the installation to succeed), but it is not enough for a production deployment. In addition, if you create new OpenShift apps or routes, you will have to add their entries too, because `/etc/hosts` does not support wildcard entries.*
 
 ##### External API Access
 
@@ -347,7 +411,7 @@ openstack port show <cluster name>-<clusterID>-ingress-port
 Then attach the FIP to it:
 
 ```sh
-openstack floating ip set --port <cluster name>-<clusterID>-ingress-port <apps FIP>
+openstack floating ip set --port <cluster name>-<clusterID>-ingress-port <ingressFloatingIP>
 ```
 
 This assumes the floating IP and corresponding `*.apps` DNS record exists.
@@ -357,13 +421,14 @@ This assumes the floating IP and corresponding `*.apps` DNS record exists.
 
 If you cannot or don't want to pre-create a floating IP address, the installation should still succeed, however the installer will fail waiting for the API.
 
-**WARNING:** The installer will fail if it can't reach the bootstrap OpenShift API in 20 minutes.
+> **WARNING:**
+> The installer will fail if it can't reach the bootstrap OpenShift API in 20 minutes.
 
 Even if the installer times out, the OpenShift cluster should still come up. Once the bootstrapping process is in place, it should all run to completion. So you should be able to deploy OpenShift without any floating IP addresses and DNS records and create everything yourself after the cluster is up.
 
 ### Running a Deployment
 
-To run the installer, you have the option of using the interactive wizard, or providing your own `install-config.yaml` file for it. The wizard is the easier way to run the installer, but passing your own `install-config.yaml` enables you to use more fine grained customizations. If you are going to create your own `install-config.yaml`, read through the available [OpenStack customizations](customization.md). For information on running the installer with Kuryr, see the [Kuryr docs](kuryr.md).
+To run the installer, you have the option of using the interactive wizard, or providing your own `install-config.yaml` file for it. The wizard is the easier way to run the installer, but passing your own `install-config.yaml` enables you to use more fine grained customizations. If you are going to create your own `install-config.yaml`, read through the available [OpenStack customizations](customization.md).
 
 ```sh
 ./openshift-install create cluster --dir ostest
@@ -389,7 +454,8 @@ Look for a message like this to verify that your install succeeded:
 
 ```txt
 INFO Install complete!
-INFO To access the cluster as the system:admin user when using 'oc', run 'export KUBECONFIG=/home/stack/ostest/auth/kubeconfig'
+INFO To access the cluster as the system:admin user when using 'oc', run
+    export KUBECONFIG=/home/stack/ostest/auth/kubeconfig
 INFO Access the OpenShift web-console here: https://console-openshift-console.apps.ostest.shiftstack.com
 INFO Login to the console with user: kubeadmin, password: xxx
 ```
@@ -442,9 +508,9 @@ rm -rf ostest/
 
 ### Adding a MachineSet
 
-Groups of Compute nodes are managed using the [MachineSet][machine-set-code] resource. It is possible to create additional MachineSets post-install, for example to assign workloads to specific machines.
+Groups of Compute nodes are managed using the MachineSet resource. It is possible to create additional MachineSets post-install, for example to assign workloads to specific machines.
 
-When running on OpenStack, the MachineSet has platform-specific fields under `spec.template.spec.providerSpec.value`. For more information about the values that you can set in the `providerSpec`, see [the API definition](provider-spec-definition).
+When running on OpenStack, the MachineSet has platform-specific fields under `spec.template.spec.providerSpec.value`. For more information about the values that you can set in the `providerSpec`, see [the API definition][provider-spec-definition].
 
 ```yaml
 apiVersion: machine.openshift.io/v1beta1
@@ -501,15 +567,17 @@ spec:
           availabilityZone: <optional_openstack_availability_zone>
 ```
 
-[provider-spec-definition]: https://github.com/openshift/cluster-api-provider-openstack/blob/155384b859c5b2fb5b7f11c9111d3f8e4f3066bd/pkg/apis/openstackproviderconfig/v1alpha1/types.go#L31
+[provider-spec-definition]: https://github.com/openshift/api/blob/master/machine/v1alpha1/types_openstack.go
 
 #### Defining a MachineSet That Uses Multiple Networks
 
-To define a MachineSet with multiple networks, the `primarySubnet` value in the `providerSpec` must be set to the OpenStack subnet that you want the Kubernetes endpoints of the nodes to be published on. For most use cases, this is the same subnet as the [machinesSubnet](./customization.md#cluster-scoped-properties) in the `install-config.yaml`.
+To define a MachineSet with multiple networks, the `primarySubnet` value in the `providerSpec` must be set to the OpenStack subnet that you want the Kubernetes endpoints of the nodes to be published on. For most use cases, this is the same subnet(s) as the subnets listed in [controlPlanePort](./customization.md#cluster-scoped-properties) in the `install-config.yaml`.
 
  After you set the subnet, add all of the networks that you want to attach to your machines to the `Networks` list in `providerSpec`. You must also add the network that the primary subnet is part of to this list.
 
 #### Using a Server Group
+
+The `serverGroupID` property of the `MachineSet` resource is used to create machines in that OpenStack server group. The server group must exist in OpenStack before you can apply the new `MachineSet` resource.
 
 In order to hint the Nova scheduler to spread the Machines across different
 hosts, first create a Server Group with the [desired
@@ -531,9 +599,6 @@ In order to use Availability Zones, create one MachineSet per target
 Availability Zone, and set the Availability Zone in the `availabilityZone`
 property of the MachineSet.
 
-**NOTE:** Note when deploying with `Kuryr` there is an Octavia API loadbalancer VM that will not fulfill the Availability Zones restrictions due to Octavia lack of support for it. In addition, if Octavia only has the amphora provider instead of also the OVN-Octavia provider, all the OpenShift services will be backed up by Octavia Load Balancer VMs which will not fulfill the Availability Zone restrictions either.
-
-[machine-set-code]: https://github.com/openshift/cluster-api-provider-openstack/blob/master/pkg/apis/openstackproviderconfig/v1alpha1/types.go
 [server-group-docs]: https://docs.openstack.org/api-ref/compute/?expanded=create-server-group-detail#create-server-group
 
 ### Using a Custom External Load Balancer
@@ -547,7 +612,8 @@ Add the following external facing services to your new load balancer:
 - The master nodes serve the OpenShift API on port 6443 using TCP.
 - The apps hosted on the worker nodes are served on ports 80, and 443. They are both served using TCP.
 
-Note: Make sure the instance that your new load balancer is running on has security group rules that allow TCP traffic over these ports.
+> **Note**
+> Make sure the instance that your new load balancer is running on has security group rules that allow TCP traffic over these ports.
 
 #### HAProxy Example Load Balancer Config
 
@@ -610,7 +676,8 @@ Result:
 }
 ```
 
-Note: The versions in the sample output may differ from your own. As long as you get a JSON payload response, the API is accessible.
+> **Note**
+> The versions in the sample output may differ from your own. As long as you get a JSON payload response, the API is accessible.
 
 #### Verifying that Apps Reachable
 
@@ -640,12 +707,90 @@ set-cookie: 1e2670d92730b515ce3a1bb65da45062=9b714eb87e93cf34853e87a92d6894be; p
 cache-control: private
 ```
 
-### Refreshing a CA Certificate
+### Reconfiguring cloud provider
 
-If you ran the installer with a [custom CA certificate](#self-signed-openstack-ca-certificates), then this certificate can be changed while the cluster is running. To change your certificate, edit the value of the `ca-cert.pem` key in the `cloud-provider-config` configmap with a valid PEM certificate.
+If you need to update the OpenStack cloud provider configuration you can edit the ConfigMap containing it:
 
 ```sh
 oc edit configmap -n openshift-config cloud-provider-config
+```
+
+> **Note**
+> It can take a while to reconfigure the cluster depending on the size of it.
+> The reconfiguration is completed once no node is getting `SchedulingDisabled` taint anymore.
+
+There are several things you can change:
+
+#### Modifying cloud provider options
+
+If you need to modify the direct cloud provider options, then edit the `config` key in the ConfigMap. A brief list of possible options is shown in [Cloud Provider configuration](./customization.md#cloud-provider-configuration) section.
+
+
+#### Refreshing a CA Certificate
+
+If you ran the installer with a [custom CA certificate](#self-signed-openstack-ca-certificates), then this certificate can be changed while the cluster is running. To change your certificate, edit the value of the `ca-cert.pem` key in the `cloud-provider-config` configmap with a valid PEM certificate.
+
+## Control Plane node migration
+
+This script moves one node from its host to a different host.
+
+Requirements:
+* environment variable `OS_CLOUD` pointing to a `clouds` entry with admin credentials in `clouds.yaml`
+* environment variable `KUBECONFIG` pointing to admin OpenShift credentials
+
+```
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+if [ $# -lt 1 ]; then
+	echo "Usage: '$0 node_name'"
+	exit 64
+fi
+
+# Check for admin OpenStack credentials
+openstack server list --all-projects >/dev/null || { >&2 echo "The script needs OpenStack admin credentials. Exiting"; exit 77; }
+
+# Check for admin OpenShift credentials
+oc adm top node >/dev/null || { >&2 echo "The script needs OpenShift admin credentials. Exiting"; exit 77; }
+
+set -x
+
+declare -r node_name="$1"
+declare server_id
+server_id="$(openstack server list --all-projects -f value -c ID -c Name | grep "$node_name" | cut -d' ' -f1)"
+readonly server_id
+
+# Drain the node
+oc adm cordon "$node_name"
+oc adm drain "$node_name" --delete-emptydir-data --ignore-daemonsets --force
+
+# Power off the server
+oc debug "node/${node_name}" -- chroot /host shutdown -h 1
+
+# Verify the server is shutoff
+until openstack server show "$server_id" -f value -c status | grep -q 'SHUTOFF'; do sleep 5; done
+
+# Migrate the node
+openstack server migrate --wait "$server_id"
+
+# Resize VM
+openstack server resize confirm "$server_id"
+
+# Wait for the resize confirm to finish
+until openstack server show "$server_id" -f value -c status | grep -q 'SHUTOFF'; do sleep 5; done
+
+# Restart VM
+openstack server start "$server_id"
+
+# Wait for the node to show up as Ready:
+until oc get node "$node_name" | grep -q "^${node_name}[[:space:]]\+Ready"; do sleep 5; done
+
+# Uncordon the node
+oc adm uncordon "$node_name"
+
+# Wait for cluster operators to stabilize
+until oc get co -o go-template='statuses: {{ range .items }}{{ range .status.conditions }}{{ if eq .type "Degraded" }}{{ if ne .status "False" }}DEGRADED{{ end }}{{ else if eq .type "Progressing"}}{{ if ne .status "False" }}PROGRESSING{{ end }}{{ else if eq .type "Available"}}{{ if ne .status "True" }}NOTAVAILABLE{{ end }}{{ end }}{{ end }}{{ end }}' | grep -qv '\(DEGRADED\|PROGRESSING\|NOTAVAILABLE\)'; do sleep 5; done
 ```
 
 ## Reporting Issues

@@ -1,3 +1,4 @@
+//go:build tools
 // +build tools
 
 // Official workaround to track tool dependencies with go modules:
@@ -6,9 +7,9 @@
 package tools
 
 import (
-	// dependency of hack/go-lint.sh
-	_ "golang.org/x/lint"
-
+	_ "github.com/daixiang0/gci" // dependency of hack/go-fmt.sh
+	// used to generate mocks
+	_ "github.com/golang/mock/mockgen"
 	// dependency of generating CRD for install-config
 	_ "sigs.k8s.io/controller-tools/cmd/controller-gen"
 )

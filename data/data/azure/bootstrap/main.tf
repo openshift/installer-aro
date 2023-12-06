@@ -1,10 +1,28 @@
 locals {
   bootstrap_nic_ip_v4_configuration_name = "bootstrap-nic-ip-v4"
   bootstrap_nic_ip_v6_configuration_name = "bootstrap-nic-ip-v6"
+  description                            = "Created By OpenShift Installer"
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id             = var.azure_subscription_id
+  client_id                   = var.azure_client_id
+  client_secret               = var.azure_client_secret
+  client_certificate_password = var.azure_certificate_password
+  client_certificate_path     = var.azure_certificate_path
+  tenant_id                   = var.azure_tenant_id
+  environment                 = var.azure_environment
+  use_msi                     = var.azure_use_msi
+}
+
+data "azurerm_storage_account" "storage_account" {
+  name                = azurerm_storage_account.cluster.name
+  resource_group_name = var.resource_group_name
 }
 
 data "azurerm_storage_account_sas" "ignition" {
-  connection_string = var.storage_account.primary_connection_string
+  connection_string = data.azurerm_storage_account.storage_account.primary_connection_string
   https_only        = true
 
   resource_types {
@@ -32,26 +50,22 @@ data "azurerm_storage_account_sas" "ignition" {
     process = false
     write   = false
     update  = false
+    filter  = false
+    tag     = false
   }
 }
 
 resource "azurerm_storage_container" "ignition" {
-  name                  = "ignition"
-  storage_account_name  = var.storage_account.name
-  container_access_type = "private"
-}
-
-resource "local_file" "ignition_bootstrap" {
-  content  = var.ignition
-  filename = "${path.module}/ignition_bootstrap.ign"
+  name                 = "ignition"
+  storage_account_name = azurerm_storage_account.cluster.name
 }
 
 resource "azurerm_storage_blob" "ignition" {
   name                   = "bootstrap.ign"
-  source                 = local_file.ignition_bootstrap.filename
-  storage_account_name   = var.storage_account.name
+  source                 = var.ignition_bootstrap_file
+  storage_account_name   = azurerm_storage_account.cluster.name
   storage_container_name = azurerm_storage_container.ignition.name
-  type                   = "Block"
+  type                   = var.azure_keyvault_key_name != "" ? "Page" : "Block"
 }
 
 data "ignition_config" "redirect" {
@@ -61,35 +75,37 @@ data "ignition_config" "redirect" {
 }
 
 resource "azurerm_public_ip" "bootstrap_public_ip_v4" {
-  count = var.private || ! var.use_ipv4 ? 0 : 1
+  count = var.azure_private || ! var.use_ipv4 ? 0 : 1
 
   sku                 = "Standard"
-  location            = var.region
+  location            = var.azure_region
   name                = "${var.cluster_id}-bootstrap-pip-v4"
   resource_group_name = var.resource_group_name
   allocation_method   = "Static"
+  tags                = var.azure_extra_tags
 }
 
 data "azurerm_public_ip" "bootstrap_public_ip_v4" {
-  count = var.private ? 0 : 1
+  count = var.azure_private ? 0 : 1
 
   name                = azurerm_public_ip.bootstrap_public_ip_v4[0].name
   resource_group_name = var.resource_group_name
 }
 
 resource "azurerm_public_ip" "bootstrap_public_ip_v6" {
-  count = var.private || ! var.use_ipv6 ? 0 : 1
+  count = var.azure_private || ! var.use_ipv6 ? 0 : 1
 
   sku                 = "Standard"
-  location            = var.region
+  location            = var.azure_region
   name                = "${var.cluster_id}-bootstrap-pip-v6"
   resource_group_name = var.resource_group_name
   allocation_method   = "Static"
   ip_version          = "IPv6"
+  tags                = var.azure_extra_tags
 }
 
 data "azurerm_public_ip" "bootstrap_public_ip_v6" {
-  count = var.private || ! var.use_ipv6 ? 0 : 1
+  count = var.azure_private || ! var.use_ipv6 ? 0 : 1
 
   name                = azurerm_public_ip.bootstrap_public_ip_v6[0].name
   resource_group_name = var.resource_group_name
@@ -97,7 +113,7 @@ data "azurerm_public_ip" "bootstrap_public_ip_v6" {
 
 resource "azurerm_network_interface" "bootstrap" {
   name                = "${var.cluster_id}-bootstrap-nic"
-  location            = var.region
+  location            = var.azure_region
   resource_group_name = var.resource_group_name
 
   dynamic "ip_configuration" {
@@ -107,14 +123,14 @@ resource "azurerm_network_interface" "bootstrap" {
         primary : var.use_ipv4,
         name : local.bootstrap_nic_ip_v4_configuration_name,
         ip_address_version : "IPv4",
-        public_ip_id : var.private ? null : azurerm_public_ip.bootstrap_public_ip_v4[0].id,
+        public_ip_id : var.azure_private ? null : azurerm_public_ip.bootstrap_public_ip_v4[0].id,
         include : var.use_ipv4 || var.use_ipv6,
       },
       {
         primary : ! var.use_ipv4,
         name : local.bootstrap_nic_ip_v6_configuration_name,
         ip_address_version : "IPv6",
-        public_ip_id : var.private || ! var.use_ipv6 ? null : azurerm_public_ip.bootstrap_public_ip_v6[0].id,
+        public_ip_id : var.azure_private || ! var.use_ipv6 ? null : azurerm_public_ip.bootstrap_public_ip_v6[0].id,
         include : var.use_ipv6,
       },
       ] : {
@@ -128,18 +144,20 @@ resource "azurerm_network_interface" "bootstrap" {
     content {
       primary                       = ip_configuration.value.primary
       name                          = ip_configuration.value.name
-      subnet_id                     = var.subnet_id
+      subnet_id                     = var.master_subnet_id
       private_ip_address_version    = ip_configuration.value.ip_address_version
       private_ip_address_allocation = "Dynamic"
       public_ip_address_id          = ip_configuration.value.public_ip_id
     }
   }
+
+  tags = var.azure_extra_tags
 }
 
 resource "azurerm_network_interface_backend_address_pool_association" "public_lb_bootstrap_v4" {
   // This is required because terraform cannot calculate counts during plan phase completely and therefore the `vnet/public-lb.tf`
   // conditional need to be recreated. See https://github.com/hashicorp/terraform/issues/12570
-  count = (! var.private || ! var.outbound_udr) ? 1 : 0
+  count = (! var.azure_private || var.azure_outbound_routing_type != "UserDefinedRouting") ? 1 : 0
 
   network_interface_id    = azurerm_network_interface.bootstrap.id
   backend_address_pool_id = var.elb_backend_pool_v4_id
@@ -149,7 +167,7 @@ resource "azurerm_network_interface_backend_address_pool_association" "public_lb
 resource "azurerm_network_interface_backend_address_pool_association" "public_lb_bootstrap_v6" {
   // This is required because terraform cannot calculate counts during plan phase completely and therefore the `vnet/public-lb.tf`
   // conditional need to be recreated. See https://github.com/hashicorp/terraform/issues/12570
-  count = var.use_ipv6 && (! var.private || ! var.outbound_udr) ? 1 : 0
+  count = var.use_ipv6 && (! var.azure_private || var.azure_outbound_routing_type != "UserDefinedRouting") ? 1 : 0
 
   network_interface_id    = azurerm_network_interface.bootstrap.id
   backend_address_pool_id = var.elb_backend_pool_v6_id
@@ -174,16 +192,19 @@ resource "azurerm_network_interface_backend_address_pool_association" "internal_
 
 resource "azurerm_linux_virtual_machine" "bootstrap" {
   name                  = "${var.cluster_id}-bootstrap"
-  location              = var.region
+  location              = var.azure_region
   resource_group_name   = var.resource_group_name
   network_interface_ids = [azurerm_network_interface.bootstrap.id]
-  size                  = var.vm_size
+  size                  = var.azure_master_vm_type
   admin_username        = "core"
   # The password is normally applied by WALA (the Azure agent), but this
   # isn't installed in RHCOS. As a result, this password is never set. It is
   # included here because it is required by the Azure ARM API.
   admin_password                  = "NotActuallyApplied!"
   disable_password_authentication = false
+  encryption_at_host_enabled      = var.azure_master_encryption_at_host_enabled
+  secure_boot_enabled             = var.azure_master_secure_boot == "Enabled"
+  vtpm_enabled                    = var.azure_master_virtualized_trusted_platform_module == "Enabled"
 
   identity {
     type         = "UserAssigned"
@@ -191,19 +212,45 @@ resource "azurerm_linux_virtual_machine" "bootstrap" {
   }
 
   os_disk {
-    name                 = "${var.cluster_id}-bootstrap_OSDisk" # os disk name needs to match cluster-api convention
-    caching              = "ReadWrite"
-    storage_account_type = "Premium_LRS"
-    disk_size_gb         = 100
+    name                   = "${var.cluster_id}-bootstrap_OSDisk" # os disk name needs to match cluster-api convention
+    caching                = "ReadWrite"
+    storage_account_type   = var.azure_master_root_volume_type
+    disk_size_gb           = 100
+    disk_encryption_set_id = var.azure_master_disk_encryption_set_id
+
+    security_encryption_type         = var.azure_master_security_encryption_type
+    secure_vm_disk_encryption_set_id = var.azure_master_secure_vm_disk_encryption_set_id
   }
 
-  source_image_id = var.vm_image
+  # Either source_image_id or source_image_reference must be defined
+  source_image_id = azurerm_shared_image_version.bootstrap_image_version.id
+
+  dynamic "source_image_reference" {
+    for_each = var.azure_use_marketplace_image ? [1] : []
+
+    content {
+      publisher = var.azure_marketplace_image_publisher
+      offer     = var.azure_marketplace_image_offer
+      sku       = var.azure_marketplace_image_sku
+      version   = var.azure_marketplace_image_version
+    }
+  }
+
+  dynamic "plan" {
+    for_each = var.azure_use_marketplace_image && var.azure_marketplace_image_has_plan ? [1] : []
+
+    content {
+      publisher = var.azure_marketplace_image_publisher
+      product   = var.azure_marketplace_image_offer
+      name      = var.azure_marketplace_image_sku
+    }
+  }
 
   computer_name = "${var.cluster_id}-bootstrap-vm"
   custom_data   = base64encode(data.ignition_config.redirect.rendered)
 
   boot_diagnostics {
-    storage_account_uri = var.storage_account.primary_blob_endpoint
+    storage_account_uri = null # null enables managed storage account for boot diagnostics
   }
 
   depends_on = [
@@ -212,9 +259,13 @@ resource "azurerm_linux_virtual_machine" "bootstrap" {
     azurerm_network_interface_backend_address_pool_association.internal_lb_bootstrap_v4,
     azurerm_network_interface_backend_address_pool_association.internal_lb_bootstrap_v6
   ]
+
+  tags = var.azure_extra_tags
 }
 
 resource "azurerm_network_security_rule" "bootstrap_ssh_in" {
+  count = var.azure_private ? 0 : 1
+
   name                        = "bootstrap_ssh_in"
   priority                    = 103
   direction                   = "Inbound"
@@ -226,4 +277,5 @@ resource "azurerm_network_security_rule" "bootstrap_ssh_in" {
   destination_address_prefix  = "*"
   resource_group_name         = var.resource_group_name
   network_security_group_name = var.nsg_name
+  description                 = local.description
 }

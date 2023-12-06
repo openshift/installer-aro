@@ -1,11 +1,15 @@
 package validation
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
+	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/aws"
 )
 
@@ -14,6 +18,7 @@ func TestValidatePlatform(t *testing.T) {
 		name     string
 		platform *aws.Platform
 		expected string
+		credMode types.CredentialsMode
 	}{
 		{
 			name: "minimal",
@@ -27,6 +32,22 @@ func TestValidatePlatform(t *testing.T) {
 				Region: "",
 			},
 			expected: `^test-path\.region: Required value: region must be specified$`,
+		},
+		{
+			name: "hosted zone with subnets",
+			platform: &aws.Platform{
+				Region:     "us-east-1",
+				Subnets:    []string{"test-subnet"},
+				HostedZone: "test-hosted-zone",
+			},
+		},
+		{
+			name: "hosted zone without subnets",
+			platform: &aws.Platform{
+				Region:     "us-east-1",
+				HostedZone: "test-hosted-zone",
+			},
+			expected: `^test-path\.hostedZone: Invalid value: "test-hosted-zone": may not use an existing hosted zone when not using existing subnets$`,
 		},
 		{
 			name: "invalid url for service endpoint",
@@ -111,11 +132,13 @@ func TestValidatePlatform(t *testing.T) {
 				Region: "us-east-1",
 				DefaultMachinePlatform: &aws.MachinePool{
 					EC2RootVolume: aws.EC2RootVolume{
+						Type: "io1",
 						IOPS: -10,
+						Size: 128,
 					},
 				},
 			},
-			expected: `^test-path\.defaultMachinePlatform\.iops: Invalid value: -10: Storage IOPS must be positive$`,
+			expected: `^test-path.*iops: Invalid value: -10: iops must be a positive number$`,
 		},
 		{
 			name: "invalid userTags, Name key",
@@ -146,15 +169,135 @@ func TestValidatePlatform(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "too many userTags",
+			platform: &aws.Platform{
+				Region:   "us-east-1",
+				UserTags: generateTooManyUserTags(),
+			},
+			expected: fmt.Sprintf(`^\Qtest-path.userTags: Too many: %d: must have at most %d items`, userTagLimit+1, userTagLimit),
+		},
+		{
+			name: "hosted zone role without hosted zone should error",
+			platform: &aws.Platform{
+				Region:         "us-east-1",
+				HostedZoneRole: "test-hosted-zone-role",
+			},
+			expected: `^test-path\.hostedZoneRole: Invalid value: "test-hosted-zone-role": may not specify a role to assume for hosted zone operations without also specifying a hosted zone$`,
+		},
+		{
+			name:     "valid hosted zone & role should not throw an error",
+			credMode: types.PassthroughCredentialsMode,
+			platform: &aws.Platform{
+				Region:         "us-east-1",
+				Subnets:        []string{"test-subnet"},
+				HostedZone:     "test-hosted-zone",
+				HostedZoneRole: "test-hosted-zone-role",
+			},
+		},
+		{
+			name: "hosted zone role without credential mode should error",
+			platform: &aws.Platform{
+				Region:         "us-east-1",
+				Subnets:        []string{"test-subnet"},
+				HostedZone:     "test-hosted-zone",
+				HostedZoneRole: "test-hosted-zone-role",
+			},
+			expected: `^test-path\.hostedZoneRole: Forbidden: when specifying a hostedZoneRole, either Passthrough or Manual credential mode must be specified$`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidatePlatform(tc.platform, field.NewPath("test-path")).ToAggregate()
+			err := ValidatePlatform(tc.platform, tc.credMode, field.NewPath("test-path")).ToAggregate()
 			if tc.expected == "" {
 				assert.NoError(t, err)
 			} else {
-				assert.Regexp(t, tc.expected, err)
+				assert.Regexp(t, tc.credMode, err)
 			}
 		})
 	}
+}
+
+func TestValidateTag(t *testing.T) {
+	cases := []struct {
+		name      string
+		key       string
+		value     string
+		expectErr bool
+	}{{
+		name:  "valid",
+		key:   "test-key",
+		value: "test-value",
+	}, {
+		name:      "invalid characters in key",
+		key:       "bad-key***",
+		value:     "test-value",
+		expectErr: true,
+	}, {
+		name:      "invalid characters in value",
+		key:       "test-key",
+		value:     "bad-value***",
+		expectErr: true,
+	}, {
+		name:      "empty key",
+		key:       "",
+		value:     "test-value",
+		expectErr: true,
+	}, {
+		name:      "empty value",
+		key:       "test-key",
+		value:     "",
+		expectErr: true,
+	}, {
+		name:      "key too long",
+		key:       strings.Repeat("a", 129),
+		value:     "test-value",
+		expectErr: true,
+	}, {
+		name:      "value too long",
+		key:       "test-key",
+		value:     strings.Repeat("a", 257),
+		expectErr: true,
+	}, {
+		name:      "key in kubernetes.io namespace",
+		key:       "kubernetes.io/cluster/some-cluster",
+		value:     "owned",
+		expectErr: true,
+	}, {
+		name:      "key in openshift.io namespace",
+		key:       "openshift.io/some-key",
+		value:     "some-value",
+		expectErr: true,
+	}, {
+		name:      "key in openshift.io subdomain namespace",
+		key:       "other.openshift.io/some-key",
+		value:     "some-value",
+		expectErr: true,
+	}, {
+		name:  "key in namespace similar to openshift.io",
+		key:   "otheropenshift.io/some-key",
+		value: "some-value",
+	}, {
+		name:  "key with openshift.io in path",
+		key:   "some-domain/openshift.io/some-key",
+		value: "some-value",
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateTag(tc.key, tc.value)
+			if tc.expectErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func generateTooManyUserTags() map[string]string {
+	tags := map[string]string{}
+	for i := 0; i <= userTagLimit; i++ {
+		tags[strconv.Itoa(i)] = strconv.Itoa(i)
+	}
+	return tags
 }

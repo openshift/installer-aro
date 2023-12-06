@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/ipnet"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/openstack"
@@ -23,37 +24,17 @@ func validPlatform() *openstack.Platform {
 
 func validNetworking() *types.Networking {
 	return &types.Networking{
-		NetworkType: "OpenShiftSDN",
+		NetworkType: "OVNKubernetes",
 		MachineNetwork: []types.MachineNetworkEntry{{
 			CIDR: *ipnet.MustParseCIDR("10.0.0.0/16"),
 		}},
 	}
 }
 
-func TestValidateClusterName(t *testing.T) {
-	testConfig := types.InstallConfig{}
-
-	// valid platform
-	testConfig.ObjectMeta.Name = "test"
-	errs := ValidatePlatform(validPlatform(), validNetworking(), field.NewPath("test-path"), &testConfig)
-	assert.NoError(t, errs.ToAggregate())
-
-	// too long cluster name (more than 14 chars)
-	testConfig.ObjectMeta.Name = "0123456789abcde"
-	errs = ValidatePlatform(validPlatform(), validNetworking(), field.NewPath("test-path"), &testConfig)
-	assert.True(t, len(errs) == 1)
-	assert.Equal(t, "cluster name is too long, please restrict it to 14 characters", errs[0].Detail)
-
-	// . in the name
-	testConfig.ObjectMeta.Name = "test.cluster"
-	errs = ValidatePlatform(validPlatform(), validNetworking(), field.NewPath("test-path"), &testConfig)
-	assert.True(t, len(errs) == 1)
-	assert.Equal(t, "cluster name can't contain \".\" character", errs[0].Detail)
-}
-
 func TestValidatePlatform(t *testing.T) {
 	cases := []struct {
 		name                  string
+		config                *types.InstallConfig
 		platform              *openstack.Platform
 		networking            *types.Networking
 		noClouds              bool
@@ -62,12 +43,65 @@ func TestValidatePlatform(t *testing.T) {
 		validMachinesSubnet   bool
 		invalidMachinesSubnet bool
 		valid                 bool
+		expectedError         string
 	}{
 		{
 			name:       "minimal",
 			platform:   validPlatform(),
 			networking: validNetworking(),
 			valid:      true,
+		},
+		{
+			name:     "allowed load balancer field with OpenShift managed default",
+			platform: validPlatform(),
+			config: &types.InstallConfig{
+				FeatureSet: configv1.TechPreviewNoUpgrade,
+				Platform: types.Platform{
+					OpenStack: func() *openstack.Platform {
+						p := validPlatform()
+						p.LoadBalancer = &configv1.OpenStackPlatformLoadBalancer{
+							Type: configv1.LoadBalancerTypeOpenShiftManagedDefault,
+						}
+						return p
+					}(),
+				},
+			},
+			valid: true,
+		},
+		{
+			name:     "allowed load balancer field with user-managed",
+			platform: validPlatform(),
+			config: &types.InstallConfig{
+				FeatureSet: configv1.TechPreviewNoUpgrade,
+				Platform: types.Platform{
+					OpenStack: func() *openstack.Platform {
+						p := validPlatform()
+						p.LoadBalancer = &configv1.OpenStackPlatformLoadBalancer{
+							Type: configv1.LoadBalancerTypeUserManaged,
+						}
+						return p
+					}(),
+				},
+			},
+			valid: true,
+		},
+		{
+			name:     "allowed load balancer field invalid type",
+			platform: validPlatform(),
+			config: &types.InstallConfig{
+				FeatureSet: configv1.TechPreviewNoUpgrade,
+				Platform: types.Platform{
+					OpenStack: func() *openstack.Platform {
+						p := validPlatform()
+						p.LoadBalancer = &configv1.OpenStackPlatformLoadBalancer{
+							Type: "FooBar",
+						}
+						return p
+					}(),
+				},
+			},
+			expectedError: `^test-path\.loadBalancer.type: Invalid value: "FooBar": invalid load balancer type`,
+			valid:         false,
 		},
 		{
 			name: "non IP external dns",
@@ -78,8 +112,9 @@ func TestValidatePlatform(t *testing.T) {
 				}
 				return p
 			}(),
-			networking: validNetworking(),
-			valid:      false,
+			networking:    validNetworking(),
+			valid:         false,
+			expectedError: `\"invalid\" is not a valid IP`,
 		},
 		{
 			name: "valid external dns",
@@ -94,77 +129,49 @@ func TestValidatePlatform(t *testing.T) {
 			valid:      true,
 		},
 		{
-			name: "valid custom API vip",
+			name: "invalid subnet ID",
 			platform: func() *openstack.Platform {
 				p := validPlatform()
-				p.APIVIP = "10.0.0.9"
+				fixedIP := openstack.FixedIP{
+					Subnet: openstack.SubnetFilter{ID: "fake"},
+				}
+				p.ControlPlanePort = &openstack.PortTarget{
+					FixedIPs: []openstack.FixedIP{fixedIP},
+				}
 				return p
 			}(),
-			networking: validNetworking(),
-			valid:      true,
-		},
-		{
-			name: "incorrect network custom API vip",
-			platform: func() *openstack.Platform {
-				p := validPlatform()
-				p.APIVIP = "11.1.0.5"
-				return p
-			}(),
-			networking: validNetworking(),
-			valid:      false,
-		},
-		{
-			name: "valid custom ingress vip",
-			platform: func() *openstack.Platform {
-				p := validPlatform()
-				p.IngressVIP = "10.0.0.9"
-				return p
-			}(),
-			networking: validNetworking(),
-			valid:      true,
-		},
-		{
-			name: "incorrect network custom ingress vip",
-			platform: func() *openstack.Platform {
-				p := validPlatform()
-				p.IngressVIP = "11.1.0.5"
-				return p
-			}(),
-			networking: validNetworking(),
-			valid:      false,
-		},
-		{
-			name: "invalid network custom ingress vip",
-			platform: func() *openstack.Platform {
-				p := validPlatform()
-				p.IngressVIP = "banana"
-				return p
-			}(),
-			networking: validNetworking(),
-			valid:      false,
-		},
-		{
-			name: "invalid network custom API vip",
-			platform: func() *openstack.Platform {
-				p := validPlatform()
-				p.APIVIP = "banana"
-				return p
-			}(),
-			networking: validNetworking(),
-			valid:      false,
+			networking:    validNetworking(),
+			expectedError: `^test-path\.controlPlanePort.fixedIPs: Invalid value: "fake": invalid subnet ID`,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			testConfig := types.InstallConfig{}
-			testConfig.ObjectMeta.Name = "test"
+			// Build default wrapping installConfig
+			if tc.config == nil {
+				tc.config = installConfig().build()
+				tc.config.OpenStack = tc.platform
+			}
 
-			err := ValidatePlatform(tc.platform, tc.networking, field.NewPath("test-path"), &testConfig).ToAggregate()
-			if tc.valid {
+			err := ValidatePlatform(tc.platform, tc.networking, field.NewPath("test-path"), tc.config).ToAggregate()
+			if tc.expectedError == "" {
 				assert.NoError(t, err)
 			} else {
-				assert.Error(t, err)
+				assert.Regexp(t, tc.expectedError, err)
 			}
 		})
 	}
+}
+
+type installConfigBuilder struct {
+	types.InstallConfig
+}
+
+func installConfig() *installConfigBuilder {
+	return &installConfigBuilder{
+		InstallConfig: types.InstallConfig{},
+	}
+}
+
+func (icb *installConfigBuilder) build() *types.InstallConfig {
+	return &icb.InstallConfig
 }

@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	gcpprovider "github.com/openshift/cluster-api-provider-gcp/pkg/apis/gcpprovider/v1beta1"
-	"github.com/openshift/installer/pkg/types"
-	machineapi "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	machinev1 "github.com/openshift/api/machine/v1"
+	machineapi "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/installer/pkg/types"
 )
 
 func TestConfigMasters(t *testing.T) {
@@ -38,22 +39,38 @@ func TestConfigMasters(t *testing.T) {
 			{
 				Spec: machineapi.MachineSpec{
 					ProviderSpec: machineapi.ProviderSpec{
-						Value: &runtime.RawExtension{Object: &gcpprovider.GCPMachineProviderSpec{}},
+						Value: &runtime.RawExtension{Object: &machineapi.GCPMachineProviderSpec{}},
 					},
 				},
 			},
 			{
 				Spec: machineapi.MachineSpec{
 					ProviderSpec: machineapi.ProviderSpec{
-						Value: &runtime.RawExtension{Object: &gcpprovider.GCPMachineProviderSpec{}},
+						Value: &runtime.RawExtension{Object: &machineapi.GCPMachineProviderSpec{}},
+					},
+				},
+			},
+		}
+		controlPlaneMachineSet := &machinev1.ControlPlaneMachineSet{
+			Spec: machinev1.ControlPlaneMachineSetSpec{
+				Template: machinev1.ControlPlaneMachineSetTemplate{
+					OpenShiftMachineV1Beta1Machine: &machinev1.OpenShiftMachineV1Beta1MachineTemplate{
+						Spec: machineapi.MachineSpec{
+							ProviderSpec: machineapi.ProviderSpec{
+								Value: &runtime.RawExtension{
+									Object: &machineapi.GCPMachineProviderSpec{},
+								},
+							},
+						},
 					},
 				},
 			},
 		}
 		t.Run(tc.testCase, func(t *testing.T) {
-			ConfigMasters(machines, clusterID, tc.publishingStrategy)
+			err := ConfigMasters(machines, controlPlaneMachineSet, clusterID, tc.publishingStrategy)
+			assert.NoError(t, err)
 			for _, machine := range machines {
-				providerSpec := machine.Spec.ProviderSpec.Value.Object.(*gcpprovider.GCPMachineProviderSpec)
+				providerSpec := machine.Spec.ProviderSpec.Value.Object.(*machineapi.GCPMachineProviderSpec)
 				assert.Equal(t, providerSpec.TargetPools, tc.expectedTargetPools)
 			}
 		})

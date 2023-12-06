@@ -19,28 +19,47 @@ variable "ovirt_password" {
   description = "The plain password of user to access Engine API"
 }
 
-variable "ovirt_tmp_template_vm_id" {
+variable "ovirt_cafile" {
   type        = string
+  description = "Path to a file containing the CA certificate for the oVirt engine API in PEM format"
   default     = ""
-  description = "The ID of tmp VM which was created for creating the templated"
+}
+
+variable "ovirt_ca_bundle" {
+  type        = string
+  description = "The CA certificate for the oVirt engine API in PEM format"
+}
+
+variable "ovirt_insecure" {
+  type        = bool
+  description = "Disable oVirt engine certificate verification"
 }
 
 variable "ovirt_cluster_id" {
   type        = string
   description = "The ID of Cluster"
+  validation {
+    condition     = var.ovirt_cluster_id != ""
+    error_message = "The ovirt_storage_domain_id must not be empty."
+  }
 }
 
 variable "ovirt_storage_domain_id" {
   type        = string
   description = "The ID of Storage Domain for the template"
+  validation {
+    condition     = var.ovirt_storage_domain_id != ""
+    error_message = "The ovirt_storage_domain_id must not be empty."
+  }
 }
 
-variable "openstack_base_image_name" {
+variable "ovirt_base_image_name" {
   type        = string
-  description = "Name of the base image to use for the nodes."
+  default     = ""
+  description = "Name of an existing base image to use for the nodes."
 }
 
-variable "openstack_base_image_local_file_path" {
+variable "ovirt_base_image_local_file_path" {
   type        = string
   default     = ""
   description = "Local file path of the base image file to use for the nodes."
@@ -57,20 +76,36 @@ variable "ovirt_vnic_profile_id" {
   description = "The ID of the vNIC profile of Logical Network."
 }
 
+variable "ovirt_affinity_groups" {
+  type        = list(object({ name = string, priority = number, description = string, enforcing = string }))
+  description = "Affinity groups that will be created"
+  default     = []
+}
+
 variable "ovirt_master_memory" {
   type        = string
   description = "master VM memory in MiB"
+  default     = 16348 * 1024 * 1024
 }
 
 variable "ovirt_master_cores" {
   type        = string
   description = "master VM number of cores"
+  default     = 1
 }
 
 variable "ovirt_master_sockets" {
   type        = string
   description = "master VM number of sockets"
+  default     = 1
 }
+
+variable "ovirt_master_threads" {
+  type        = string
+  description = "master VM number of threads"
+  default     = 1
+}
+
 
 variable "ovirt_master_os_disk_gb" {
   type        = string
@@ -86,3 +121,41 @@ variable "ovirt_master_instance_type_id" {
   type        = string
   description = "master VM instance type ID"
 }
+
+variable "ovirt_master_affinity_groups" {
+  type        = list(string)
+  description = "master VMs affinity groups names"
+}
+
+variable "ovirt_master_auto_pinning_policy" {
+  type        = string
+  default     = "none"
+  description = "master VM auto pinning policy"
+}
+
+variable "ovirt_master_hugepages" {
+  type        = string
+  description = "master VM hugepages size in KiB"
+}
+
+variable "ovirt_master_sparse" {
+  type        = bool
+  description = "make master VM disks sparse."
+  default     = null
+}
+
+variable "ovirt_master_clone" {
+  type        = bool
+  description = "clone master VM disk from template instead of linking. Defaults to false for desktop ovirt_master_vm_type, true otherwise."
+  default     = null
+}
+
+variable "ovirt_master_format" {
+  type        = string
+  description = "master VM disk format, can be empty, 'raw', or 'cow'"
+  validation {
+    condition     = var.ovirt_master_format == "" || var.ovirt_master_format == "cow" || var.ovirt_master_format == "raw"
+    error_message = "The ovirt_master_format must be one of 'raw' or 'cow'."
+  }
+}
+

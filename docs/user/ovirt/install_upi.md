@@ -16,7 +16,7 @@ mandatory ignition files and to monitor the installation process itself.
   * [Network Requirements](#network-requirements)
     * [Load Balancers](#load-balancers)
     * [DNS](#dns)
-    * [RHCOS image](#rhcos-image)
+  * [RHCOS image](#rhcos-image)
 * [Getting Ansible playbooks](#getting-ansible-playbooks)
 * [Assets directory](#assets-directory)
 * [Inventory explained](#inventory-explained)
@@ -150,7 +150,7 @@ the main components and services
 **NOTE**: the DNS records above may also point to the same IP in case you are using only one load balancer configured with the rules described
 in the [previous section](#load-balancers).
 
-### RHCOS image
+## RHCOS image
 This UPI installation process requires a proper RHCOS (Red Hat Enterprise Linux CoreOS) image URL to be set in the [inventory.yml](../../../upi/ovirt/inventory.yml) file.
 
 The RHCOS images can be found [here](https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/) and you have to choose
@@ -160,7 +160,7 @@ the URL related to the `OpenStack` qcow2 image type, like in the example below
 https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/pre-release/4.6.0-0.nightly-2020-07-16-122837/rhcos-4.6.0-0.nightly-2020-07-16-122837-x86_64-openstack.x86_64.qcow2.gz
 ```
 
-The version of the image should be choosen according to the OpenShift version you're about to install (in general less than or equal to the OCP
+The version of the image should be chosen according to the OpenShift version you're about to install (in general less than or equal to the OCP
 version). 
 Once you have the URL set in the [inventory.yml](../../../upi/ovirt/inventory.yml) a dedicated Ansible playbook will be in charge to download the `qcow2.gz` file, uncompress it
 in a specified folder and use it to create oVirt/RHV templates.
@@ -181,7 +181,7 @@ Different versions of the oVirt UPI playbooks can be downloaded changing the REL
 (please be aware that this UPI work started with the `release-4.6`).
 
 ## Assets directory
-Before proceeding with the installation is better to set an environment variable with the path (absolute or relative according to your preferences) 
+Before proceeding with the installation is **required** to set an environment variable with the path (absolute or relative according to your preferences) 
 of the directory in which the `openshift-install` command will put all the artifacts and that we'll also refer to in the [inventory.yml](../../../upi/ovirt/inventory.yml)`.
 
 ```sh
@@ -461,7 +461,7 @@ $ openshift-install create install-config --dir $ASSETS_DIR
 used to expose the API interface (`https://api.ocp4.example.org:6443/`)
 and the newly created applications (e.g. `https://console-openshift-console.apps.ocp4.example.org`).
 
-You can obtain a new Pull secret from [here](https://cloud.redhat.com/openshift/install/pull-secret).
+You can obtain a new Pull secret from [here](https://console.redhat.com/openshift/install/pull-secret).
 
 The result of this first step is the creation of a `install-config.yaml` in the specified assets directory:
 
@@ -478,7 +478,7 @@ parameters needed to reach the oVirt/RHV engine and use its REST API.
 **NOTE:**
 Some of the parameters added during the `openshift-install` workflow, in particular the `Internal API virtual IP` and
 `Ingress virtual IP`, will not be used because already configured in your infrastructure DNS (see [DNS](#dns) section).
-Other paramenters like `oVirt cluster`, `oVirt storage`, `oVirt network`, will be used as specified in the [inventory.yml](../../../upi/ovirt/inventory.yml)
+Other parameters like `oVirt cluster`, `oVirt storage`, `oVirt network`, will be used as specified in the [inventory.yml](../../../upi/ovirt/inventory.yml)
 and removed from the `install-config.yaml` with the previously mentioned `virtual IPs`, using a script reported in a 
 [section below](#set-platform-to-none).
 
@@ -544,17 +544,6 @@ $ tree
     │   ├── cluster-proxy-01-config.yaml
     │   ├── cluster-scheduler-02-config.yml
     │   ├── cvo-overrides.yaml
-    │   ├── etcd-ca-bundle-configmap.yaml
-    │   ├── etcd-client-secret.yaml
-    │   ├── etcd-host-service-endpoints.yaml
-    │   ├── etcd-host-service.yaml
-    │   ├── etcd-metric-client-secret.yaml
-    │   ├── etcd-metric-serving-ca-configmap.yaml
-    │   ├── etcd-metric-signer-secret.yaml
-    │   ├── etcd-namespace.yaml
-    │   ├── etcd-service.yaml
-    │   ├── etcd-serving-ca-configmap.yaml
-    │   ├── etcd-signer-secret.yaml
     │   ├── kube-cloud-config.yaml
     │   ├── kube-system-configmap-root-ca.yaml
     │   ├── machine-config-server-tls-secret.yaml
@@ -623,7 +612,7 @@ The `infraID` will be used by the UPI Ansible playbooks as prefix for the VMs cr
 process avoiding name clashes in case of multiple installations in the same oVirt/RHV cluster.
 
 **Note:** certificates contained into ignition config files expire after 24 hours. You must complete the cluster installation
-and keep the cluster running for 24 hours in a non-degradated state to ensure that the first certificate rotation has finished.
+and keep the cluster running for 24 hours in a non-degraded state to ensure that the first certificate rotation has finished.
 
 
 ## Create templates and VMs

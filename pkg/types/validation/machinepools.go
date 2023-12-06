@@ -14,12 +14,16 @@ import (
 	baremetalvalidation "github.com/openshift/installer/pkg/types/baremetal/validation"
 	"github.com/openshift/installer/pkg/types/gcp"
 	gcpvalidation "github.com/openshift/installer/pkg/types/gcp/validation"
-	"github.com/openshift/installer/pkg/types/kubevirt"
-	kubevirtvalidation "github.com/openshift/installer/pkg/types/kubevirt/validation"
+	"github.com/openshift/installer/pkg/types/ibmcloud"
+	ibmcloudvalidation "github.com/openshift/installer/pkg/types/ibmcloud/validation"
 	"github.com/openshift/installer/pkg/types/libvirt"
 	libvirtvalidation "github.com/openshift/installer/pkg/types/libvirt/validation"
+	"github.com/openshift/installer/pkg/types/openstack"
+	openstackvalidation "github.com/openshift/installer/pkg/types/openstack/validation"
 	"github.com/openshift/installer/pkg/types/ovirt"
 	ovirtvalidation "github.com/openshift/installer/pkg/types/ovirt/validation"
+	"github.com/openshift/installer/pkg/types/powervs"
+	powervsvalidation "github.com/openshift/installer/pkg/types/powervs/validation"
 	"github.com/openshift/installer/pkg/types/vsphere"
 	vspherevalidation "github.com/openshift/installer/pkg/types/vsphere/validation"
 )
@@ -42,6 +46,7 @@ var (
 		types.ArchitectureAMD64:   true,
 		types.ArchitectureS390X:   true,
 		types.ArchitecturePPC64LE: true,
+		types.ArchitectureARM64:   true,
 	}
 
 	validArchitectureValues = func() []string {
@@ -69,6 +74,9 @@ func ValidateMachinePool(platform *types.Platform, p *types.MachinePool, fldPath
 	if !validArchitectures[p.Architecture] {
 		allErrs = append(allErrs, field.NotSupported(fldPath.Child("architecture"), p.Architecture, validArchitectureValues))
 	}
+	if platform.AWS != nil {
+		allErrs = append(allErrs, awsvalidation.ValidateMachinePoolArchitecture(p, fldPath.Child("architecture"))...)
+	}
 	allErrs = append(allErrs, validateMachinePoolPlatform(platform, &p.Platform, p, fldPath.Child("platform"))...)
 	return allErrs
 }
@@ -91,10 +99,17 @@ func validateMachinePoolPlatform(platform *types.Platform, p *types.MachinePoolP
 		validate(aws.Name, p.AWS, func(f *field.Path) field.ErrorList { return awsvalidation.ValidateMachinePool(platform.AWS, p.AWS, f) })
 	}
 	if p.Azure != nil {
-		validate(azure.Name, p.Azure, func(f *field.Path) field.ErrorList { return validateAzureMachinePool(p, pool, f) })
+		validate(azure.Name, p.Azure, func(f *field.Path) field.ErrorList {
+			return azurevalidation.ValidateMachinePool(p.Azure, pool.Name, platform.Azure, f)
+		})
 	}
 	if p.GCP != nil {
 		validate(gcp.Name, p.GCP, func(f *field.Path) field.ErrorList { return validateGCPMachinePool(platform, p, pool, f) })
+	}
+	if p.IBMCloud != nil {
+		validate(ibmcloud.Name, p.IBMCloud, func(f *field.Path) field.ErrorList {
+			return ibmcloudvalidation.ValidateMachinePool(platform.IBMCloud, p.IBMCloud, f)
+		})
 	}
 	if p.Libvirt != nil {
 		validate(libvirt.Name, p.Libvirt, func(f *field.Path) field.ErrorList { return libvirtvalidation.ValidateMachinePool(p.Libvirt, f) })
@@ -103,13 +118,20 @@ func validateMachinePoolPlatform(platform *types.Platform, p *types.MachinePoolP
 		validate(baremetal.Name, p.BareMetal, func(f *field.Path) field.ErrorList { return baremetalvalidation.ValidateMachinePool(p.BareMetal, f) })
 	}
 	if p.VSphere != nil {
-		validate(vsphere.Name, p.VSphere, func(f *field.Path) field.ErrorList { return vspherevalidation.ValidateMachinePool(p.VSphere, f) })
+		validate(vsphere.Name, p.VSphere, func(f *field.Path) field.ErrorList {
+			return vspherevalidation.ValidateMachinePool(platform.VSphere, pool, f)
+		})
 	}
 	if p.Ovirt != nil {
 		validate(ovirt.Name, p.Ovirt, func(f *field.Path) field.ErrorList { return ovirtvalidation.ValidateMachinePool(p.Ovirt, f) })
 	}
-	if p.Kubevirt != nil {
-		validate(kubevirt.Name, p.Kubevirt, func(f *field.Path) field.ErrorList { return kubevirtvalidation.ValidateMachinePool(p.Kubevirt, f) })
+	if p.PowerVS != nil {
+		validate(powervs.Name, p.PowerVS, func(f *field.Path) field.ErrorList { return powervsvalidation.ValidateMachinePool(p.PowerVS, f) })
+	}
+	if p.OpenStack != nil {
+		validate(openstack.Name, p.OpenStack, func(f *field.Path) field.ErrorList {
+			return openstackvalidation.ValidateMachinePool(platform.OpenStack, p.OpenStack, pool.Name, f)
+		})
 	}
 	return allErrs
 }
@@ -119,15 +141,7 @@ func validateGCPMachinePool(platform *types.Platform, p *types.MachinePoolPlatfo
 
 	allErrs = append(allErrs, gcpvalidation.ValidateMachinePool(platform.GCP, p.GCP, f)...)
 	allErrs = append(allErrs, gcpvalidation.ValidateMasterDiskType(pool, f)...)
-
-	return allErrs
-}
-
-func validateAzureMachinePool(p *types.MachinePoolPlatform, pool *types.MachinePool, f *field.Path) field.ErrorList {
-	allErrs := field.ErrorList{}
-
-	allErrs = append(allErrs, azurevalidation.ValidateMachinePool(p.Azure, f)...)
-	allErrs = append(allErrs, azurevalidation.ValidateMasterDiskType(pool, f)...)
+	allErrs = append(allErrs, gcpvalidation.ValidateServiceAccount(platform.GCP, pool, f)...)
 
 	return allErrs
 }

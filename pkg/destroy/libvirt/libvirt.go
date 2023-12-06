@@ -1,3 +1,4 @@
+//go:build libvirt
 // +build libvirt
 
 package libvirt
@@ -5,7 +6,7 @@ package libvirt
 import (
 	"strings"
 
-	libvirt "github.com/libvirt/libvirt-go"
+	"github.com/libvirt/libvirt-go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -57,10 +58,10 @@ func New(logger logrus.FieldLogger, metadata *types.ClusterMetadata) (providers.
 }
 
 // Run is the entrypoint to start the uninstall process.
-func (o *ClusterUninstaller) Run() error {
+func (o *ClusterUninstaller) Run() (*types.ClusterQuota, error) {
 	conn, err := libvirt.NewConnect(o.LibvirtURI)
 	if err != nil {
-		return errors.Wrap(err, "failed to connect to Libvirt daemon")
+		return nil, errors.Wrap(err, "failed to connect to Libvirt daemon")
 	}
 
 	for _, del := range []deleteFunc{
@@ -70,11 +71,11 @@ func (o *ClusterUninstaller) Run() error {
 	} {
 		err = del(conn, o.Filter, o.Logger)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 // deleteDomains calls deleteDomainsSinglePass until it finds no
@@ -123,8 +124,15 @@ func deleteDomainsSinglePass(conn *libvirt.Connect, filter filterFunc, logger lo
 				return false, errors.Wrapf(err, "destroy domain %q", dName)
 			}
 		}
-		if err := domain.Undefine(); err != nil {
-			return false, errors.Wrapf(err, "undefine domain %q", dName)
+		if err := domain.UndefineFlags(libvirt.DOMAIN_UNDEFINE_NVRAM); err != nil {
+			if e := err.(libvirt.Error); e.Code == libvirt.ERR_NO_SUPPORT || e.Code == libvirt.ERR_INVALID_ARG {
+				logger.WithField("domain", dName).Info("libvirt does not support undefine flags: will try again without flags")
+				if err := domain.Undefine(); err != nil {
+					return false, errors.Wrapf(err, "could not undefine libvirt domain: %q", dName)
+				}
+			} else {
+				return false, errors.Wrapf(err, "could not undefine libvirt domain %q with flags", dName)
+			}
 		}
 		logger.WithField("domain", dName).Info("Deleted domain")
 	}

@@ -90,11 +90,12 @@ INFO Consuming "Install Config" from target directory
 ```
 
 ### Remove control plane machines
-Remove the control plane machines from the manifests.
+Remove the control plane machines and machinesets from the manifests.
 We'll be providing those ourselves and don't want to involve [the machine-API operator][machine-api-operator].
 
 ```sh
 rm -f openshift/99_openshift-cluster-api_master-machines-*.yaml
+rm -f openshift/99_openshift-machine-api_master-control-plane-machine-set.yaml
 ```
 
 ### Remove compute machinesets (optional)
@@ -237,8 +238,8 @@ openshift-vw9j6
 export BASE_DOMAIN='example.com'
 export BASE_DOMAIN_ZONE_NAME='example'
 export NETWORK_CIDR='10.0.0.0/16'
-export MASTER_SUBNET_CIDR='10.0.0.0/19'
-export WORKER_SUBNET_CIDR='10.0.32.0/19'
+export MASTER_SUBNET_CIDR='10.0.0.0/17'
+export WORKER_SUBNET_CIDR='10.0.128.0/17'
 
 export KUBECONFIG=auth/kubeconfig
 export CLUSTER_NAME=$(jq -r .clusterName metadata.json)
@@ -277,8 +278,8 @@ EOF
 ```
 - `infra_id`: the infrastructure name (INFRA_ID above)
 - `region`: the region to deploy the cluster into (for example us-east1)
-- `master_subnet_cidr`: the CIDR for the master subnet (for example 10.0.0.0/19)
-- `worker_subnet_cidr`: the CIDR for the worker subnet (for example 10.0.32.0/19)
+- `master_subnet_cidr`: the CIDR for the master subnet (for example 10.0.0.0/17)
+- `worker_subnet_cidr`: the CIDR for the worker subnet (for example 10.0.128.0/17)
 
 Create the deployment using gcloud.
 
@@ -470,9 +471,10 @@ gcloud iam service-accounts keys create service-account-key.json --iam-account=$
 Locate the RHCOS image source and create a cluster image.
 
 ```sh
-export IMAGE_SOURCE=$(curl https://raw.githubusercontent.com/openshift/installer/master/data/data/rhcos.json | jq -r .gcp.url)
-gcloud compute images create "${INFRA_ID}-rhcos-image" --source-uri="${IMAGE_SOURCE}"
-export CLUSTER_IMAGE=$(gcloud compute images describe ${INFRA_ID}-rhcos-image --format json | jq -r .selfLink)
+export IMAGE_SOURCE=$(curl https://raw.githubusercontent.com/openshift/installer/master/data/data/coreos/rhcos.json | jq -r '.architecture.x86_64.images.gcp')
+export IMAGE_NAME=$(echo "${IMAGE_SOURCE}" | jq -r '.name')
+export IMAGE_PROJECT=$(echo "${IMAGE_SOURCE}" | jq -r '.project')
+export CLUSTER_IMAGE=$(gcloud compute images describe ${IMAGE_NAME} --project ${IMAGE_PROJECT} --format json | jq -r .selfLink)
 ```
 
 ## Upload the bootstrap.ign to a new bucket
@@ -549,13 +551,13 @@ Manager, so we must add the bootstrap node manually.
 ### Add bootstrap instance to internal load balancer instance group
 
 ```sh
-gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-bootstrap-instance-group --zone=${ZONE_0} --instances=${INFRA_ID}-bootstrap
+gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-bootstrap-ig --zone=${ZONE_0} --instances=${INFRA_ID}-bootstrap
 ```
 
 ### Add bootstrap instance group to the internal load balancer backend service
 
 ```sh
-gcloud compute backend-services add-backend ${INFRA_ID}-api-internal-backend-service --region=${REGION} --instance-group=${INFRA_ID}-bootstrap-instance-group --instance-group-zone=${ZONE_0}
+gcloud compute backend-services add-backend ${INFRA_ID}-api-internal-backend-service --region=${REGION} --instance-group=${INFRA_ID}-bootstrap-ig --instance-group-zone=${ZONE_0}
 ```
 
 ## Launch permanent control plane
@@ -611,34 +613,6 @@ Create the deployment using gcloud.
 gcloud deployment-manager deployments create ${INFRA_ID}-control-plane --config 05_control_plane.yaml
 ```
 
-## Configure control plane variables
-
-```sh
-export MASTER0_IP=$(gcloud compute instances describe ${INFRA_ID}-master-0 --zone ${ZONE_0} --format json | jq -r .networkInterfaces[0].networkIP)
-export MASTER1_IP=$(gcloud compute instances describe ${INFRA_ID}-master-1 --zone ${ZONE_1} --format json | jq -r .networkInterfaces[0].networkIP)
-export MASTER2_IP=$(gcloud compute instances describe ${INFRA_ID}-master-2 --zone ${ZONE_2} --format json | jq -r .networkInterfaces[0].networkIP)
-```
-
-## Add DNS entries for control plane etcd
-The templates do not manage DNS entries due to limitations of Deployment Manager, so we must add the etcd entries manually.
-
-If you are installing into a [Shared VPC (XPN)][sharedvpc],
-use the `--account` and `--project` parameters to perform these actions in the host project.
-
-```sh
-if [ -f transaction.yaml ]; then rm transaction.yaml; fi
-gcloud dns record-sets transaction start --zone ${INFRA_ID}-private-zone
-gcloud dns record-sets transaction add ${MASTER0_IP} --name etcd-0.${CLUSTER_NAME}.${BASE_DOMAIN}. --ttl 60 --type A --zone ${INFRA_ID}-private-zone
-gcloud dns record-sets transaction add ${MASTER1_IP} --name etcd-1.${CLUSTER_NAME}.${BASE_DOMAIN}. --ttl 60 --type A --zone ${INFRA_ID}-private-zone
-gcloud dns record-sets transaction add ${MASTER2_IP} --name etcd-2.${CLUSTER_NAME}.${BASE_DOMAIN}. --ttl 60 --type A --zone ${INFRA_ID}-private-zone
-gcloud dns record-sets transaction add \
-  "0 10 2380 etcd-0.${CLUSTER_NAME}.${BASE_DOMAIN}." \
-  "0 10 2380 etcd-1.${CLUSTER_NAME}.${BASE_DOMAIN}." \
-  "0 10 2380 etcd-2.${CLUSTER_NAME}.${BASE_DOMAIN}." \
-  --name _etcd-server-ssl._tcp.${CLUSTER_NAME}.${BASE_DOMAIN}. --ttl 60 --type SRV --zone ${INFRA_ID}-private-zone
-gcloud dns record-sets transaction execute --zone ${INFRA_ID}-private-zone
-```
-
 ## Add control plane instances to load balancers
 The templates do not manage load balancer membership due to limitations of Deployment
 Manager, so we must add the control plane nodes manually.
@@ -646,9 +620,9 @@ Manager, so we must add the control plane nodes manually.
 ### Add control plane instances to internal load balancer instance groups
 
 ```sh
-gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-master-${ZONE_0}-instance-group --zone=${ZONE_0} --instances=${INFRA_ID}-master-0
-gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-master-${ZONE_1}-instance-group --zone=${ZONE_1} --instances=${INFRA_ID}-master-1
-gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-master-${ZONE_2}-instance-group --zone=${ZONE_2} --instances=${INFRA_ID}-master-2
+gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-master-${ZONE_0}-ig --zone=${ZONE_0} --instances=${INFRA_ID}-master-0
+gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-master-${ZONE_1}-ig --zone=${ZONE_1} --instances=${INFRA_ID}-master-1
+gcloud compute instance-groups unmanaged add-instances ${INFRA_ID}-master-${ZONE_2}-ig --zone=${ZONE_2} --instances=${INFRA_ID}-master-2
 ```
 
 ### Add control plane instances to external load balancer target pools (optional)
@@ -786,13 +760,13 @@ use the `--account` and `--project` parameters to perform these actions in the h
 $ oc -n openshift-ingress get service router-default
 NAME             TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                      AGE
 router-default   LoadBalancer   172.30.18.154   35.233.157.184   80:32288/TCP,443:31215/TCP   98
-
-export ROUTER_IP=$(oc -n openshift-ingress get service router-default --no-headers | awk '{print $4}')
 ```
 
 ### Add the internal *.apps DNS record
 
 ```sh
+export ROUTER_IP=$(oc -n openshift-ingress get service router-default --no-headers | awk '{print $4}')
+
 if [ -f transaction.yaml ]; then rm transaction.yaml; fi
 gcloud dns record-sets transaction start --zone ${INFRA_ID}-private-zone
 gcloud dns record-sets transaction add ${ROUTER_IP} --name \*.apps.${CLUSTER_NAME}.${BASE_DOMAIN}. --ttl 300 --type A --zone ${INFRA_ID}-private-zone

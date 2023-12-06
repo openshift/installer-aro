@@ -28,14 +28,25 @@ const (
 
 	// PermissionDeleteSharedNetworking is a set of permissions required when the installer destroys resources from a shared-network cluster.
 	PermissionDeleteSharedNetworking PermissionGroup = "delete-shared-networking"
+
+	// PermissionDeleteSharedInstanceRole is a set of permissions required when the installer destroys resources from a
+	// cluster with user-supplied IAM roles for instances.
+	PermissionDeleteSharedInstanceRole PermissionGroup = "delete-shared-instance-role"
+
+	// PermissionCreateHostedZone is a set of permissions required when the installer creates a route53 hosted zone.
+	PermissionCreateHostedZone PermissionGroup = "create-hosted-zone"
+
+	// PermissionDeleteHostedZone is a set of permissions required when the installer destroys a route53 hosted zone.
+	PermissionDeleteHostedZone PermissionGroup = "delete-hosted-zone"
+
+	// PermissionKMSEncryptionKeys is an additional set of permissions required when the installer uses user provided kms encryption keys.
+	PermissionKMSEncryptionKeys PermissionGroup = "kms-encryption-keys"
 )
 
 var permissions = map[PermissionGroup][]string{
 	// Base set of permissions required for cluster creation
 	PermissionCreateBase: {
 		// EC2 related perms
-		"ec2:AllocateAddress",
-		"ec2:AssociateAddress",
 		"ec2:AuthorizeSecurityGroupEgress",
 		"ec2:AuthorizeSecurityGroupIngress",
 		"ec2:CopyImage",
@@ -64,6 +75,7 @@ var permissions = map[PermissionGroup][]string{
 		"ec2:DescribeRegions",
 		"ec2:DescribeRouteTables",
 		"ec2:DescribeSecurityGroups",
+		"ec2:DescribeSecurityGroupRules",
 		"ec2:DescribeSubnets",
 		"ec2:DescribeTags",
 		"ec2:DescribeVolumes",
@@ -75,7 +87,6 @@ var permissions = map[PermissionGroup][]string{
 		"ec2:GetEbsDefaultKmsKeyId",
 		"ec2:ModifyInstanceAttribute",
 		"ec2:ModifyNetworkInterfaceAttribute",
-		"ec2:ReleaseAddress",
 		"ec2:RevokeSecurityGroupEgress",
 		"ec2:RevokeSecurityGroupIngress",
 		"ec2:RunInstances",
@@ -130,8 +141,6 @@ var permissions = map[PermissionGroup][]string{
 		// Route53 related perms
 		"route53:ChangeResourceRecordSets",
 		"route53:ChangeTagsForResource",
-		"route53:CreateHostedZone",
-		"route53:DeleteHostedZone",
 		"route53:GetChange",
 		"route53:GetHostedZone",
 		"route53:ListHostedZones",
@@ -149,7 +158,7 @@ var permissions = map[PermissionGroup][]string{
 		"s3:GetBucketLocation",
 		"s3:GetBucketLogging",
 		"s3:GetBucketObjectLockConfiguration",
-		"s3:GetBucketReplication",
+		"s3:GetBucketPolicy",
 		"s3:GetBucketRequestPayment",
 		"s3:GetBucketTagging",
 		"s3:GetBucketVersioning",
@@ -176,11 +185,14 @@ var permissions = map[PermissionGroup][]string{
 	PermissionDeleteBase: {
 		"autoscaling:DescribeAutoScalingGroups",
 		"ec2:DeleteNetworkInterface",
+		"ec2:DeletePlacementGroup",
+		"ec2:DeleteTags",
 		"ec2:DeleteVolume",
 		"elasticloadbalancing:DeleteTargetGroup",
 		"elasticloadbalancing:DescribeTargetGroups",
 		"iam:DeleteAccessKey",
 		"iam:DeleteUser",
+		"iam:ListAttachedRolePolicies",
 		"iam:ListInstanceProfiles",
 		"iam:ListRolePolicies",
 		"iam:ListUserPolicies",
@@ -190,7 +202,9 @@ var permissions = map[PermissionGroup][]string{
 	},
 	// Permissions required for creating network resources
 	PermissionCreateNetworking: {
+		"ec2:AllocateAddress",
 		"ec2:AssociateDhcpOptions",
+		"ec2:AssociateAddress",
 		"ec2:AssociateRouteTable",
 		"ec2:AttachInternetGateway",
 		"ec2:CreateDhcpOptions",
@@ -216,11 +230,32 @@ var permissions = map[PermissionGroup][]string{
 		"ec2:DeleteVpcEndpoints",
 		"ec2:DetachInternetGateway",
 		"ec2:DisassociateRouteTable",
+		"ec2:ReleaseAddress",
 		"ec2:ReplaceRouteTableAssociation",
 	},
 	// Permissions required for deleting a cluster with shared network resources
 	PermissionDeleteSharedNetworking: {
 		"tag:UnTagResources",
+	},
+	// Permissions required for deleting a cluster with shared instance roles
+	PermissionDeleteSharedInstanceRole: {
+		"iam:UntagRole",
+	},
+	PermissionCreateHostedZone: {
+		"route53:CreateHostedZone",
+	},
+	PermissionDeleteHostedZone: {
+		"route53:DeleteHostedZone",
+	},
+	PermissionKMSEncryptionKeys: {
+		"kms:Decrypt",
+		"kms:Encrypt",
+		"kms:GenerateDataKey",
+		"kms:GenerateDataKeyWithoutPlainText",
+		"kms:DescribeKey",
+		"kms:RevokeGrant",
+		"kms:CreateGrant",
+		"kms:ListGrants",
 	},
 }
 

@@ -3,8 +3,9 @@ package manifests
 import (
 	"fmt"
 
-	"github.com/openshift/installer/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/openshift/installer/pkg/types"
 )
 
 type configurationObject struct {
@@ -15,8 +16,9 @@ type configurationObject struct {
 }
 
 type metadata struct {
-	Name      string `json:"name,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Name        string            `json:"name,omitempty"`
+	Namespace   string            `json:"namespace,omitempty"`
 }
 
 func configMap(namespace, name string, data genericData) *configurationObject {

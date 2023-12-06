@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
+	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/ovirt"
 )
 
@@ -15,95 +17,66 @@ func validPlatform() *ovirt.Platform {
 		StorageDomainID:        "57e42205-02ac-46e1-a6d1-07459d94bc51",
 		VNICProfileID:          "57e42205-02ac-46e1-a6d1-07459d94bc52",
 		NetworkName:            "ocp-blue",
-		APIVIP:                 "10.0.0.1",
-		IngressVIP:             "10.0.0.3",
+		APIVIPs:                []string{"10.0.0.1"},
+		IngressVIPs:            []string{"10.0.0.3"},
 		DefaultMachinePlatform: nil,
 	}
 }
 
 func TestValidatePlatform(t *testing.T) {
 	cases := []struct {
-		name     string
-		platform *ovirt.Platform
-		valid    bool
+		name          string
+		config        *types.InstallConfig
+		platform      *ovirt.Platform
+		valid         bool
+		expectedError string
 	}{
 		{
-			name:     "minimal",
+			name:     "forbidden load balancer field",
 			platform: validPlatform(),
-			valid:    true,
-		},
-		{
-			name: "invalid when empty cluster ID",
-			platform: func() *ovirt.Platform {
-				p := validPlatform()
-				p.ClusterID = ""
-				return p
-			}(),
-			valid: false,
-		},
-		{
-			name: "invalid when empty storage ID",
-			platform: func() *ovirt.Platform {
-				p := validPlatform()
-				p.StorageDomainID = ""
-				return p
-			}(),
-			valid: false,
-		},
-		{
-			name: "invalid when API VIP is invalid",
-			platform: func() *ovirt.Platform {
-				p := validPlatform()
-				p.APIVIP = "1."
-				return p
-			}(),
-			valid: false,
-		},
-		{
-			name: "invalid when INGRESS VIP is invalid",
-			platform: func() *ovirt.Platform {
-				p := validPlatform()
-				p.APIVIP = "1."
-				return p
-			}(),
-			valid: false,
-		},
-		{
-			name: "malformed vnic profile id",
-			platform: func() *ovirt.Platform {
-				p := validPlatform()
-				p.VNICProfileID = "abcd-sdf"
-				return p
-			}(),
-			valid: false,
-		},
-		{
-			name: "valid empty vnic profile id",
-			platform: func() *ovirt.Platform {
-				p := validPlatform()
-				p.VNICProfileID = ""
-				return p
-			}(),
-			valid: true,
-		},
-		{
-			name: "valid machine pool",
-			platform: func() *ovirt.Platform {
-				p := validPlatform()
-				p.DefaultMachinePlatform = &ovirt.MachinePool{}
-				return p
-			}(),
-			valid: true,
+			config: &types.InstallConfig{
+				Platform: types.Platform{
+					Ovirt: func() *ovirt.Platform {
+						p := validPlatform()
+						p.LoadBalancer = &configv1.OvirtPlatformLoadBalancer{
+							Type: configv1.LoadBalancerTypeOpenShiftManagedDefault,
+						}
+						return p
+					}(),
+				},
+			},
+			valid:         false,
+			expectedError: `^test-path: Forbidden: Platform oVirt is no longer supported`,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidatePlatform(tc.platform, field.NewPath("test-path")).ToAggregate()
-			if tc.valid {
+			// Build default wrapping installConfig
+			if tc.config == nil {
+				tc.config = installConfig().build()
+				tc.config.Ovirt = tc.platform
+			}
+
+			err := ValidatePlatform(tc.platform, field.NewPath("test-path"), tc.config).ToAggregate()
+			if tc.expectedError == "" {
 				assert.NoError(t, err)
 			} else {
-				assert.Error(t, err)
+				assert.Regexp(t, tc.expectedError, err)
 			}
 		})
 	}
+}
+
+type installConfigBuilder struct {
+	types.InstallConfig
+}
+
+func installConfig() *installConfigBuilder {
+	return &installConfigBuilder{
+		InstallConfig: types.InstallConfig{},
+	}
+}
+
+func (icb *installConfigBuilder) build() *types.InstallConfig {
+	return &icb.InstallConfig
 }

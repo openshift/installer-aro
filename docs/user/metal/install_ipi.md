@@ -1,7 +1,5 @@
 # Bare Metal IPI (Installer Provisioned Infrastructure) Overview
 
-Current Status: **Experimental**
-
 This document discusses the installer support for an IPI (Installer Provisioned
 Infrastructure) install for bare metal hosts.  This includes platform support
 for the management of bare metal hosts, as well as some automation of DNS and
@@ -35,7 +33,7 @@ accessible over the external network which may not be desirable.
       on this network.
   * ***NTP***
     * A time source must be accessible from this network.
-  * ***Reserved VIPs (Virtual IPs)*** - 3 IP addresses must be reserved on this
+  * ***Reserved VIPs (Virtual IPs)*** - 2 IP addresses must be reserved on this
 	network for use by the cluster. These Virtual IPs are managed using VRRP
 	(v2 for IPv4 and v3 for IPv6). Specifically, these IPs will serve the
     following purposes:
@@ -50,8 +48,10 @@ accessible over the external network which may not be desirable.
 
 * **NIC #2 - Provisioning Network (optional) **
   * A private network used for PXE based provisioning.
-  * You must specify `provisioningNetworkInterface` to indicate which
+  * You can specify `provisioningNetworkInterface` to indicate which
     interface is connected to this network on the control plane nodes.
+    If not specified the interface is derived from the bootMacAddress.
+    If set, all the control plane nodes must have this interface.
   * The provisioning network may be "Managed" (default), "Unmanaged," or
     "Disabled."
   * In managed mode, DHCP and TFTP are configured to run in the cluster. In
@@ -105,7 +105,7 @@ cluster.  That way it is already connected to the proper networks.
 
 It is recommended that the provisioning host be a bare metal host, as it must be
 able to use libvirt to launch the OpenShift bootstrap VM locally. Additionally,
-the installer creates a directory backed libvirt storage pool in the 
+the installer creates a directory backed libvirt storage pool in the
 `/var/lib/libvirt/openshift-images` directory. Sufficient disk space must be
 available in the directory to host the bootstrap VM volume.
 
@@ -124,8 +124,13 @@ pre-requisites, the install process is the same as other IPI based platforms.
 
 `openshift-install create cluster`
 
-However, it is recommended to prepare an `install-config.yaml` file in advance,
-containing all of the details of the bare metal hosts to be provisioned.
+Note for baremetal the installer must be built with both `libvirt` and
+`baremetal` tags - in releases such a binary is included,
+named `openshift-baremetal-install`
+
+The installer supports interactive mode, but it is recommended to prepare an
+`install-config.yaml` file in advance, containing all of the details of the
+bare metal hosts to be provisioned.
 
 ### Install Config
 
@@ -136,28 +141,6 @@ the available hardware so that it is able to fully manage it. There are
 
 Here is an example `install-config.yaml` with the required `baremetal` platform
 details.
-
-**IMPORTANT NOTE:** The current install configuration for the `baremetal`
-platform should be considered experimental and still subject to change without
-backwards compatibility.  In particular, some items likely to change soon
-include:
-
-* **This field is deprecated. See rootDeviceHints instead.**
-  The `hardwareProfile` is currently exposed as a way to allow specifying
-  different hardware parameters for deployment.  By default, we will deploy
-  RHCOS to the first disk, but that may not be appropriate for all hardware.
-  The `hardwareProfile` is the field we have available to change that.  This
-  interface is subject to change.  In the meantime, hardware profiles can be
-  found here:
-  https://github.com/metal3-io/baremetal-operator/blob/master/pkg/hardware/profile.go#L48
-
-* *rootDeviceHints* -- Guidance for how to choose the device to
-  receive the image being provisioned. Documentation on using this field can
-  be found here
-  https://github.com/metal3-io/baremetal-operator/blob/master/docs/api.md
-
-* *bootMode* -- Put the server in legacy (BIOS) or UEFI mode for
-  booting. The default is UEFI.
 
 ```yaml
 apiVersion: v1
@@ -179,7 +162,6 @@ platform:
   baremetal:
     apiVIP: 192.168.111.5
     ingressVIP: 192.168.111.4
-    provisioningNetworkInterface: enp1s0
     hosts:
       - name: openshift-master-0
         role: master
@@ -227,7 +209,6 @@ sshKey: ...
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-`provisioningNetworkInterface` | | The name of the network interface on control plane nodes connected to the provisioning network. It cannot overlap with the main network (see `machineNetwork`) |
 `hosts` | | Details about bare metal hosts to use to build the cluster. See below for more details. |
 `defaultMachinePlatform` | | The default configuration used for machine pools without a platform configuration. |
 `apiVIP` | `api.<clusterdomain>` | The VIP to use for internal API communication. |
@@ -250,6 +231,9 @@ should be used to build the cluster. The number of assets must be at least great
 | `role` | | Either `master` or `worker`. |
 | `bmc` | | Connection details for the baseboard management controller. See below for details. |
 | `bootMACAddress` | | The MAC address of the NIC the host will use to boot on the provisioning network. It must be unique. |
+| `rootDeviceHints` | | How to choose the target disk for the OS during provisioning - for more details see [upstream docs](https://github.com/metal3-io/baremetal-operator/blob/master/docs/api.md). |
+| `bootMode` | `UEFI` | Choose `legacy` (BIOS) or `UEFI` mode for booting. Use `UEFISecureBoot` to enable UEFI and secure boot on the server. Only some drivers support UEFI secure boot (notably, IPMI does not). |
+| `networkConfig` | | Yaml block describing the desired host networking settings. Must be compatible with NMState (for more details see https://nmstate.io/) |
 
 The `bmc` parameter for each host is a set of values for accessing the
 baseboard management controller in the host.
@@ -286,22 +270,14 @@ image to the host, use `redfish-virtualmedia://` or `idrac-virtualmedia://`
 Please note that when the provisioning network is disabled, the only
 supported BMC's are virtual media.
 
-## Work in Progress
-
-Integration of the `baremetal` platform is still a work-in-progress across
-various parts of OpenShift.  This section discusses key items that are not yet
-fully integrated, and their workarounds.
-
-Note that once this work moves into the `openshift/installer` repository, new
-issues will get created or existing issues will be moved to track these gaps
-instead of the leaving the existing issues against the KNI fork of the installer.
+## Known Issues
 
 ### `destroy cluster` support
 
 `openshift-install destroy cluster` is not supported for the `baremetal`
 platform.
 
-https://github.com/openshift-metal3/kni-installer/issues/74
+https://github.com/openshift/installer/issues/2005
 
 ## Troubleshooting
 
@@ -335,13 +311,13 @@ You can view the Ironic logs by sshing to the bootstrap VM, and
 examining the logs of the `ironic` service, `journalctl -u ironic`. You
 may also view the logs of the individual containers:
 
-  - `podman logs ipa-downloader`
   - `podman logs coreos-downloader`
+  - `podman logs dnsmasq`
+  - `podman logs image-customization`
   - `podman logs ironic`
   - `podman logs ironic-inspector`
-  - `podman logs ironic-dnsmasq`
-  - `podman logs ironic-deploy-ramdisk-logs`
-  - `podman logs ironic-inspector-ramdisk-logs`
+  - `podman logs ironic-ramdisk-logs`
+  - `podman logs httpd`
 
 
 ### Control Plane
@@ -359,26 +335,10 @@ may be useful to examine the logs of the pods within the
 ### Ironic
 
 You may want to examine Ironic itself and look at the state of the
-hosts. The below file, when named clouds.yaml and placed in the current
-working directory, can be used to communicate with Ironic using the
-openstack commandline utilities.
+hosts. On the bootstrap VM there is a `/opt/metal3/auth/clouds.yaml`
+file which may be used with the Ironic `baremetal` client.
 
-```yaml
-clouds:
-  metal3-bootstrap:
-    auth_type: none
-    baremetal_endpoint_override: http://172.22.0.2:6385
-    baremetal_introspection_endpoint_override: http://172.22.0.2:5050
-  metal3:
-    auth_type: none
-    baremetal_endpoint_override: http://172.22.0.3:6385
-    baremetal_introspection_endpoint_override: http://172.22.0.3:5050
-```
-
-If bootstrap is still up, you can use metal3-bootstrap, otherwise use
-metal3 to examine Ironic running in the control plane:
-
-```
-export OS_CLOUD=metal3-bootstrap
-/usr/local/bin/openstack baremetal node list
-```
+To interact with Ironic running on the cluster, it will be necessary
+to create a similar `clouds.yaml` using the content from the metal3-ironic
+secrets in the openshift-machine-api namespace, and the hostIP of the
+controlplane host running the metal3 pod.

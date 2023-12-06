@@ -6,7 +6,7 @@
 * [AWS (UPI)](docs/user/aws/install_upi.md)
 * [Azure](docs/user/azure/README.md)
 * [Bare Metal (UPI)](docs/user/metal/install_upi.md)
-* [Bare Metal (IPI) (Experimental)](docs/user/metal/install_ipi.md)
+* [Bare Metal (IPI)](docs/user/metal/install_ipi.md)
 * [GCP](docs/user/gcp/README.md)
 * [GCP (UPI)](docs/user/gcp/install_upi.md)
 * [Libvirt with KVM](docs/dev/libvirt/README.md) (development only)
@@ -49,7 +49,8 @@ Example output:
 ```sh
 INFO Waiting 10m0s for the openshift-console route to be created...
 INFO Install complete!
-INFO To access the cluster as the system:admin user when using 'oc', run 'export KUBECONFIG=/path/to/installer/auth/kubeconfig'
+INFO To access the cluster as the system:admin user when using 'oc', run
+    export KUBECONFIG=/path/to/installer/auth/kubeconfig
 INFO Access the OpenShift web-console here: https://console-openshift-console.apps.${CLUSTER_NAME}.${BASE_DOMAIN}:6443
 INFO Login to the console with user: kubeadmin, password: 5char-5char-5char-5char
 ```
@@ -63,5 +64,5 @@ openshift-install destroy cluster
 ```
 
 Note that you almost certainly also want to clean up the installer state files too, including `auth/`, `terraform.tfstate`, etc.
-The best thing to do is always pass the `--dir` argument to `install` and `destroy`.
+The best thing to do is always pass the `--dir` argument to `create` and `destroy`.
 And if you want to reinstall from scratch, `rm -rf` the asset directory beforehand.

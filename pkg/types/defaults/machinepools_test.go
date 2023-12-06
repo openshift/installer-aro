@@ -4,21 +4,29 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"k8s.io/utils/pointer"
 
 	"github.com/openshift/installer/pkg/types"
 )
 
 func defaultMachinePool(name string) *types.MachinePool {
+	repCount := int64(3)
 	return &types.MachinePool{
 		Name:           name,
-		Replicas:       pointer.Int64Ptr(3),
+		Replicas:       &repCount,
 		Hyperthreading: types.HyperthreadingEnabled,
 		Architecture:   types.ArchitectureAMD64,
 	}
 }
 
+func defaultEdgeMachinePool(name string) *types.MachinePool {
+	pool := defaultMachinePool(name)
+	defaultEdgeReplicaCount := int64(0)
+	pool.Replicas = &defaultEdgeReplicaCount
+	return pool
+}
+
 func TestSetMahcinePoolDefaults(t *testing.T) {
+	defaultEdgeReplicaCount := int64(0)
 	cases := []struct {
 		name     string
 		pool     *types.MachinePool
@@ -31,20 +39,47 @@ func TestSetMahcinePoolDefaults(t *testing.T) {
 			expected: defaultMachinePool(""),
 		},
 		{
+			name:     "empty",
+			pool:     &types.MachinePool{Replicas: &defaultEdgeReplicaCount},
+			expected: defaultEdgeMachinePool(""),
+		},
+		{
 			name:     "default",
 			pool:     defaultMachinePool("test-name"),
 			expected: defaultMachinePool("test-name"),
 		},
 		{
+			name:     "default",
+			pool:     defaultEdgeMachinePool("test-name"),
+			expected: defaultEdgeMachinePool("test-name"),
+		},
+		{
 			name: "non-default replicas",
 			pool: func() *types.MachinePool {
 				p := defaultMachinePool("test-name")
-				p.Replicas = pointer.Int64Ptr(5)
+				repCount := int64(5)
+				p.Replicas = &repCount
 				return p
 			}(),
 			expected: func() *types.MachinePool {
 				p := defaultMachinePool("test-name")
-				p.Replicas = pointer.Int64Ptr(5)
+				repCount := int64(5)
+				p.Replicas = &repCount
+				return p
+			}(),
+		},
+		{
+			name: "non-default replicas",
+			pool: func() *types.MachinePool {
+				p := defaultEdgeMachinePool("test-name")
+				repCount := int64(5)
+				p.Replicas = &repCount
+				return p
+			}(),
+			expected: func() *types.MachinePool {
+				p := defaultEdgeMachinePool("test-name")
+				repCount := int64(5)
+				p.Replicas = &repCount
 				return p
 			}(),
 		},
@@ -54,7 +89,8 @@ func TestSetMahcinePoolDefaults(t *testing.T) {
 			platform: "libvirt",
 			expected: func() *types.MachinePool {
 				p := defaultMachinePool("")
-				p.Replicas = pointer.Int64Ptr(1)
+				repCount := int64(1)
+				p.Replicas = &repCount
 				return p
 			}(),
 		},
@@ -71,11 +107,61 @@ func TestSetMahcinePoolDefaults(t *testing.T) {
 				return p
 			}(),
 		},
+		{
+			name: "non-default hyperthreading",
+			pool: func() *types.MachinePool {
+				p := defaultEdgeMachinePool("test-name")
+				p.Hyperthreading = types.HyperthreadingMode("test-hyperthreading")
+				return p
+			}(),
+			expected: func() *types.MachinePool {
+				p := defaultEdgeMachinePool("test-name")
+				p.Hyperthreading = types.HyperthreadingMode("test-hyperthreading")
+				return p
+			}(),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			SetMachinePoolDefaults(tc.pool, tc.platform)
 			assert.Equal(t, tc.expected, tc.pool, "unexpected machine pool")
+		})
+	}
+}
+
+func TestHasEdgePoolConfig(t *testing.T) {
+	cases := []struct {
+		name     string
+		pool     []types.MachinePool
+		expected bool
+	}{
+		{
+			name:     "empty",
+			pool:     []types.MachinePool{*defaultMachinePool("non-edge")},
+			expected: false,
+		}, {
+			name:     "worker",
+			pool:     []types.MachinePool{*defaultMachinePool("worker")},
+			expected: false,
+		}, {
+			name:     "edge",
+			pool:     []types.MachinePool{*defaultEdgeMachinePool("edge")},
+			expected: true,
+		}, {
+			name:     "edge",
+			pool:     []types.MachinePool{*defaultEdgeMachinePool("edge"), *defaultMachinePool("non-edge")},
+			expected: true,
+		}, {
+			name:     "edge",
+			pool:     []types.MachinePool{*defaultEdgeMachinePool("edge"), *defaultMachinePool("worker")},
+			expected: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := hasEdgePoolConfig(tc.pool)
+			assert.Equal(t, tc.expected, res, "unexpected machine pool")
 		})
 	}
 }

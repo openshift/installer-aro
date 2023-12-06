@@ -1,21 +1,25 @@
+provider "libvirt" {
+  uri = var.libvirt_uri
+}
+
 resource "libvirt_volume" "bootstrap" {
   name           = "${var.cluster_id}-bootstrap"
   base_volume_id = var.base_volume_id
   pool           = var.pool
   # Bump this so it works for OKD/FCOS too
-  size = "21474836480"
+  size = "34359738368"
 }
 
 resource "libvirt_ignition" "bootstrap" {
   name    = "${var.cluster_id}-bootstrap.ign"
-  content = var.ignition
+  content = var.ignition_bootstrap
   pool    = var.pool
 }
 
 resource "libvirt_domain" "bootstrap" {
   name = "${var.cluster_id}-bootstrap"
 
-  memory = var.bootstrap_memory
+  memory = var.libvirt_bootstrap_memory
 
   vcpu = "2"
 
@@ -30,14 +34,19 @@ resource "libvirt_domain" "bootstrap" {
     target_port = 0
   }
 
-  cpu = {
+  cpu {
     mode = "host-passthrough"
   }
 
   network_interface {
     network_id = var.network_id
     hostname   = "${var.cluster_id}-bootstrap.${var.cluster_domain}"
-    addresses  = var.addresses
+    addresses  = [var.libvirt_bootstrap_ip]
+  }
+
+  graphics {
+    type        = "vnc"
+    listen_type = "address"
   }
 }
 

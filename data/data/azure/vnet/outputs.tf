@@ -1,21 +1,17 @@
-output "public_lb_backend_pool_v4_id" {
+output "elb_backend_pool_v4_id" {
   value = local.need_public_ipv4 ? azurerm_lb_backend_address_pool.public_lb_pool_v4[0].id : null
 }
 
-output "public_lb_backend_pool_v6_id" {
+output "elb_backend_pool_v6_id" {
   value = local.need_public_ipv6 ? azurerm_lb_backend_address_pool.public_lb_pool_v6[0].id : null
 }
 
-output "internal_lb_backend_pool_v4_id" {
+output "ilb_backend_pool_v4_id" {
   value = var.use_ipv4 ? azurerm_lb_backend_address_pool.internal_lb_controlplane_pool_v4[0].id : null
 }
 
-output "internal_lb_backend_pool_v6_id" {
+output "ilb_backend_pool_v6_id" {
   value = var.use_ipv6 ? azurerm_lb_backend_address_pool.internal_lb_controlplane_pool_v6[0].id : null
-}
-
-output "public_lb_id" {
-  value = var.private ? null : azurerm_lb.public.id
 }
 
 output "public_lb_pip_v4_fqdn" {
@@ -31,12 +27,10 @@ output "internal_lb_ip_v4_address" {
 }
 
 output "internal_lb_ip_v6_address" {
-  // TODO: internal LB should block v4 for better single stack emulation (&& ! var.emulate_single_stack_ipv6)
-  //   but RHCoS initramfs can't do v6 and so fails to ignite. https://issues.redhat.com/browse/GRPA-1343 
   value = var.use_ipv6 ? azurerm_lb.internal.private_ip_addresses[1] : null
 }
 
-output "cluster_nsg_name" {
+output "nsg_name" {
   value = azurerm_network_security_group.cluster.name
 }
 
@@ -52,6 +46,38 @@ output "worker_subnet_id" {
   value = local.worker_subnet_id
 }
 
-output "private" {
-  value = var.private
+output "resource_group_name" {
+  value = data.azurerm_resource_group.main.name
+}
+
+output "identity" {
+  value = azurerm_user_assigned_identity.main.id
+}
+
+output "key_vault_key_id" {
+  value = var.azure_keyvault_name != "" ? data.azurerm_key_vault.keyvault[0].id : null
+}
+
+output "user_assigned_identity_id" {
+  value = var.azure_keyvault_name != "" ? data.azurerm_user_assigned_identity.keyvault_identity[0].id : null
+}
+
+output "subnet_id" {
+  value = local.master_subnet_id
+}
+
+output "image_version_gallery_name" {
+  value = azurerm_shared_image.cluster.gallery_name
+}
+
+output "image_version_gen2_gallery_name" {
+  value = azurerm_shared_image.clustergen2.gallery_name
+}
+
+output "image_version_name" {
+  value = azurerm_shared_image.cluster.name
+}
+
+output "image_version_gen2_name" {
+  value = azurerm_shared_image.clustergen2.name
 }

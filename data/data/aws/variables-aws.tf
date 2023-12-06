@@ -93,6 +93,18 @@ EOF
   default = ""
 }
 
+variable "aws_master_instance_metadata_authentication" {
+  type        = string
+  default     = "optional"
+  description = "The session tokens requirement, also referred to as Instance Metadata Service Version 2 (IMDSv2). Values are optional or required. Defaults to optional."
+}
+
+variable "aws_bootstrap_instance_metadata_authentication" {
+  type        = string
+  default     = "optional"
+  description = "The session tokens requirement, also referred to as Instance Metadata Service Version 2 (IMDSv2). Values are optional or required. Defaults to optional."
+}
+
 variable "aws_region" {
   type        = string
   description = "The target AWS region for the cluster."
@@ -108,43 +120,110 @@ variable "aws_worker_availability_zones" {
   description = "The availability zones to provision for workers.  Worker instances are created by the machine-API operator, but this variable controls their supporting infrastructure (subnets, routing, etc.)."
 }
 
+variable "aws_edge_local_zones" {
+  type    = list(string)
+  default = []
+
+  description = "The zones to provision subnets for the edge pool. Edge instances are created by the machine-API operator, but this variable controls their supporting infrastructure (subnets, routing, etc.)."
+}
+
+variable "aws_edge_parent_zones_index" {
+  type    = map(string)
+  default = {}
+
+  description = <<EOF
+(optional) A map of the Edge's Parent Zone indexes to discover the private's route table ID used by the private subnet from the parent's Zone in the Region.
+Each Local or Wavelength Zone is connected to a parent zone in the Region. If the parent zone has private Route tables, the installer
+uses the index to associate with the private edge subnets.
+
+Example: `{ "us-east-1-nyc-1a"=5, "us-east-1-wl1-nyc-wlz-1"=2 }`
+EOF
+}
+
 variable "aws_vpc" {
-  type        = string
-  default     = null
+  type = string
+  default = null
   description = "(optional) An existing network (VPC ID) into which the cluster should be installed."
 }
 
 variable "aws_public_subnets" {
-  type        = list(string)
-  default     = null
+  type = list(string)
+  default = null
   description = "(optional) Existing public subnets into which the cluster should be installed."
 }
 
 variable "aws_private_subnets" {
-  type        = list(string)
-  default     = null
+  type = list(string)
+  default = null
   description = "(optional) Existing private subnets into which the cluster should be installed."
 }
 
+variable "aws_internal_zone" {
+  type = string
+  default = null
+  description = "(optional) An existing hosted zone (zone ID) to use for the internal API."
+}
+
+variable "aws_internal_zone_role" {
+  type = string
+  default = null
+  description = "(optional) A role to assume when using an existing hosted zone from another account."
+}
+
+
 variable "aws_publish_strategy" {
-  type        = string
+  type = string
   description = "The cluster publishing strategy, either Internal or External"
 }
 
-variable "aws_skip_region_validation" {
-  type        = bool
-  description = "This decides if the AWS provider should validate if the region is known."
-}
-
 variable "aws_ignition_bucket" {
-  type        = string
+  type = string
   description = "The S3 bucket where the ignition configuration is stored"
 }
 
 variable "aws_bootstrap_stub_ignition" {
-  type        = string
+  type = string
   description = <<EOF
 The stub Ignition config that should be used to boot the bootstrap instance. This already points to the presigned URL for the s3 bucket
 specified in aws_ignition_bucket.
+EOF
+}
+
+variable "aws_master_iam_role_name" {
+  type        = string
+  description = "The name of the IAM role that will be attached to master instances."
+  default     = ""
+}
+
+variable "aws_worker_iam_role_name" {
+  type        = string
+  description = "The name of the IAM role that will be attached to worker instances."
+  default     = ""
+}
+
+variable "aws_preserve_bootstrap_ignition" {
+  type        = bool
+  description = "The variable that needs to be set to avoid destuction of S3 objects during bootstrap destroy."
+}
+
+variable "aws_master_security_groups" {
+  type        = list(string)
+  description = "(optional) List of additional security group IDs to attach to the master nodes"
+  default     = []
+}
+
+variable "aws_edge_zones_type" {
+  type    = map(string)
+  default = {}
+
+  description = <<EOF
+(optional) A map of the Edge's Zones type indexed by zone name. Subnets in Wavelength Zone requires to be associated to
+a route table with a Carrier Gateway to: 1) ingress the traffic from the zone, 2) allow carrier public IPs associated to
+the EC2 running in Wavelength Zone.
+If a zone type with value 'wavelength-zone' is detected, the following resources is created: a Carrier Gateway,
+a Public Route Table and the default route entry pointing to the carrier gateway, then any edge subnet with available zone type
+'wavelength-zone' is associated on that route table.
+
+Example: `{ "us-east-1-nyc-1a"=local-zone, "us-east-1-wl1-nyc-wlz-1"=wavelength-zone }`
 EOF
 }

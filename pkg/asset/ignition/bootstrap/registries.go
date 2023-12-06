@@ -6,7 +6,9 @@ import (
 	"github.com/openshift/installer/pkg/types"
 )
 
-func mergedMirrorSets(sources []types.ImageContentSource) []types.ImageContentSource {
+// MergedMirrorSets consolidates a list of ImageDigestSources so that each
+// source appears only once.
+func MergedMirrorSets(sources []types.ImageDigestSource) []types.ImageDigestSource {
 	sourceSet := make(map[string][]string)
 	mirrorSet := make(map[string]sets.String)
 	orderedSources := []string{}
@@ -25,9 +27,19 @@ func mergedMirrorSets(sources []types.ImageContentSource) []types.ImageContentSo
 		}
 	}
 
-	out := []types.ImageContentSource{}
+	out := []types.ImageDigestSource{}
 	for _, source := range orderedSources {
-		out = append(out, types.ImageContentSource{Source: source, Mirrors: sourceSet[source]})
+		out = append(out, types.ImageDigestSource{Source: source, Mirrors: sourceSet[source]})
 	}
 	return out
+}
+
+// ContentSourceToDigestMirror creates the ImageContentSource to ImageDigestSource struct
+// ImageContentSource is deprecated, use ImageDigestSource.
+func ContentSourceToDigestMirror(sources []types.ImageContentSource) []types.ImageDigestSource {
+	digestSources := []types.ImageDigestSource{}
+	for _, s := range sources {
+		digestSources = append(digestSources, types.ImageDigestSource(s))
+	}
+	return digestSources
 }

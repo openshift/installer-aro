@@ -115,13 +115,34 @@ func ClusterName1035(v string) error {
 	return ClusterName(v)
 }
 
+// GCPClusterName checks if the provided cluster name has words similar to the word 'google'
+// since resources with that name are not allowed in GCP.
+func GCPClusterName(v string) error {
+	reStartsWith := regexp.MustCompile("^goog")
+	reContains := regexp.MustCompile(".*g[o0]{2}gle.*")
+	if reStartsWith.MatchString(v) || reContains.MatchString(v) {
+		return errors.New("cluster name must not start with \"goog\" or contain variations of \"google\"")
+	}
+	return nil
+}
+
+// ClusterNameMaxLength validates if the string provided length is
+// greater than maxlen argument.
+func ClusterNameMaxLength(v string, maxlen int) error {
+	if len(v) > maxlen {
+		return errors.New(validation.MaxLenError(maxlen))
+	}
+	return nil
+}
+
 // ClusterName checks if the given string is a valid name for a cluster and returns an error if not.
 // The max length of the DNS label is `DNS1123LabelMaxLength + 9` because the public DNS zones have records
 // `api.clustername`, `*.apps.clustername`, and *.apps is rendered as the nine-character \052.apps in DNS records.
 func ClusterName(v string) error {
-	maxlen := validation.DNS1123LabelMaxLength - 9
-	if len(v) > maxlen {
-		return errors.New(validation.MaxLenError(maxlen))
+	const maxlen = validation.DNS1123LabelMaxLength - 9
+	err := ClusterNameMaxLength(v, maxlen)
+	if err != nil {
+		return err
 	}
 	return validateSubdomain(v)
 }
@@ -134,6 +155,27 @@ func SubnetCIDR(cidr *net.IPNet) error {
 	nip := cidr.IP.Mask(cidr.Mask)
 	if nip.String() != cidr.IP.String() {
 		return fmt.Errorf("invalid network address. got %s, expecting %s", cidr.String(), (&net.IPNet{IP: nip, Mask: cidr.Mask}).String())
+	}
+	return nil
+}
+
+// ServiceSubnetCIDR checks if the given IP net is a valid CIDR for the Kubernetes service network
+func ServiceSubnetCIDR(cidr *net.IPNet) error {
+	if cidr.IP.IsUnspecified() {
+		return errors.New("address must be specified")
+	}
+	nip := cidr.IP.Mask(cidr.Mask)
+	if nip.String() != cidr.IP.String() {
+		return fmt.Errorf("invalid network address. got %s, expecting %s", cidr.String(), (&net.IPNet{IP: nip, Mask: cidr.Mask}).String())
+	}
+	maskLen, addrLen := cidr.Mask.Size()
+	if addrLen == 32 && maskLen < 12 {
+		return fmt.Errorf("subnet size for IPv4 service network must be /12 or greater (/16 is recommended)")
+	} else if addrLen == 128 && maskLen < 108 {
+		// Kubernetes allows any length greater than 108 (and so do we, for
+		// backward compat), but for various reasons there is no point in
+		// using any value other than 112.
+		return fmt.Errorf("subnet size for IPv6 service network should be /112")
 	}
 	return nil
 }
@@ -227,4 +269,21 @@ func MAC(addr string) error {
 func UUID(val string) error {
 	_, err := uuid.Parse(val)
 	return err
+}
+
+// Host validates that a given string is a valid URI host.
+func Host(v string) error {
+	proxyIP := net.ParseIP(v)
+	if proxyIP != nil {
+		return nil
+	}
+	return validateSubdomain(v)
+}
+
+// OnPremClusterName verifies if the cluster name contains a '.' and returns an error if it does.
+func OnPremClusterName(v string) error {
+	if strings.Contains(v, ".") {
+		return errors.New("cluster name must not contain '.'")
+	}
+	return ClusterName(v)
 }

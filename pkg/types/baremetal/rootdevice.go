@@ -5,8 +5,9 @@ package baremetal
 
 import (
 	"fmt"
+	"strings"
 
-	"github.com/metal3-io/baremetal-operator/pkg/apis/metal3/v1alpha1"
+	"github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 )
 
 // RootDeviceHints holds the hints for specifying the storage location
@@ -62,7 +63,11 @@ func (source *RootDeviceHints) MakeHintMap() map[string]string {
 	}
 
 	if source.DeviceName != "" {
-		hints["name"] = fmt.Sprintf("s== %s", source.DeviceName)
+		if strings.HasPrefix(source.DeviceName, "/dev/disk/by-path/") {
+			hints["by_path"] = fmt.Sprintf("s== %s", source.DeviceName)
+		} else {
+			hints["name"] = fmt.Sprintf("s== %s", source.DeviceName)
+		}
 	}
 	if source.HCTL != "" {
 		hints["hctl"] = fmt.Sprintf("s== %s", source.HCTL)

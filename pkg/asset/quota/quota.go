@@ -3,6 +3,7 @@ package quota
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -12,6 +13,7 @@ import (
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	configgcp "github.com/openshift/installer/pkg/asset/installconfig/gcp"
 	openstackvalidation "github.com/openshift/installer/pkg/asset/installconfig/openstack/validation"
+	configpowervs "github.com/openshift/installer/pkg/asset/installconfig/powervs"
 	"github.com/openshift/installer/pkg/asset/machines"
 	"github.com/openshift/installer/pkg/asset/quota/aws"
 	"github.com/openshift/installer/pkg/asset/quota/gcp"
@@ -20,15 +22,19 @@ import (
 	"github.com/openshift/installer/pkg/quota"
 	quotaaws "github.com/openshift/installer/pkg/quota/aws"
 	quotagcp "github.com/openshift/installer/pkg/quota/gcp"
+	"github.com/openshift/installer/pkg/types/alibabacloud"
 	typesaws "github.com/openshift/installer/pkg/types/aws"
 	"github.com/openshift/installer/pkg/types/azure"
 	"github.com/openshift/installer/pkg/types/baremetal"
+	"github.com/openshift/installer/pkg/types/external"
 	typesgcp "github.com/openshift/installer/pkg/types/gcp"
-	"github.com/openshift/installer/pkg/types/kubevirt"
+	"github.com/openshift/installer/pkg/types/ibmcloud"
 	"github.com/openshift/installer/pkg/types/libvirt"
 	"github.com/openshift/installer/pkg/types/none"
+	"github.com/openshift/installer/pkg/types/nutanix"
 	typesopenstack "github.com/openshift/installer/pkg/types/openstack"
 	"github.com/openshift/installer/pkg/types/ovirt"
+	"github.com/openshift/installer/pkg/types/powervs"
 	"github.com/openshift/installer/pkg/types/vsphere"
 )
 
@@ -79,7 +85,8 @@ func (a *PlatformQuotaCheck) Generate(dependencies asset.Parents) error {
 		}
 		q, err := quotaaws.Load(context.TODO(), session, ic.AWS.Region, services...)
 		if quotaaws.IsUnauthorized(err) {
-			logrus.Warnf("Missing permissions to fetch Quotas and therefore will skip checking them: %v, make sure you have `servicequotas:ListAWSDefaultServiceQuotas` permission available to the user.", err)
+			logrus.Debugf("Missing permissions to fetch Quotas and therefore will skip checking them: %v, make sure you have `servicequotas:ListAWSDefaultServiceQuotas` permission available to the user.", err)
+			logrus.Info("Skipping quota checks")
 			return nil
 		}
 		if err != nil {
@@ -122,16 +129,35 @@ func (a *PlatformQuotaCheck) Generate(dependencies asset.Parents) error {
 		}
 		summarizeReport(reports)
 	case typesopenstack.Name:
+		if skip := os.Getenv("OPENSHIFT_INSTALL_SKIP_PREFLIGHT_VALIDATIONS"); skip == "1" {
+			logrus.Warnf("OVERRIDE: pre-flight validation disabled.")
+			return nil
+		}
 		ci, err := openstackvalidation.GetCloudInfo(ic.Config)
 		if err != nil {
 			return errors.Wrap(err, "failed to get cloud info")
+		}
+		if ci == nil {
+			logrus.Warnf("Empty OpenStack cloud info and therefore will skip checking quota validation.")
+			return nil
 		}
 		reports, err := quota.Check(ci.Quotas, openstack.Constraints(ci, masters, workers))
 		if err != nil {
 			return summarizeFailingReport(reports)
 		}
 		summarizeReport(reports)
-	case azure.Name, baremetal.Name, libvirt.Name, none.Name, ovirt.Name, vsphere.Name, kubevirt.Name:
+	case powervs.Name:
+		// We need to prompt for missing variables because NewPISession requires them!
+		bxCli, err := configpowervs.NewBxClient(true)
+		if err != nil {
+			return errors.Wrap(err, "failed to create bluemix client")
+		}
+
+		err = bxCli.NewPISession()
+		if err != nil {
+			return errors.Wrap(err, "failed to create a new PISession")
+		}
+	case alibabacloud.Name, azure.Name, baremetal.Name, ibmcloud.Name, libvirt.Name, external.Name, none.Name, ovirt.Name, vsphere.Name, nutanix.Name:
 		// no special provisioning requirements to check
 	default:
 		err = fmt.Errorf("unknown platform type %q", platform)

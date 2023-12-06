@@ -9,6 +9,13 @@
         "description" : "Base name to be used in resource names (usually the cluster's Infra ID)"
       }
     },
+    "vnetBaseName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata" : {
+        "description" : "The specific customer vnet's base name (optional)"
+      }
+    },
     "privateDNSZoneName" : {
       "type" : "string",
       "metadata" : {
@@ -18,13 +25,13 @@
   },
   "variables" : {
     "location" : "[resourceGroup().location]",
-    "virtualNetworkName" : "[concat(parameters('baseName'), '-vnet')]",
+    "virtualNetworkName" : "[concat(if(not(empty(parameters('vnetBaseName'))), parameters('vnetBaseName'), parameters('baseName')), '-vnet')]",
     "virtualNetworkID" : "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
-    "masterSubnetName" : "[concat(parameters('baseName'), '-master-subnet')]",
+    "masterSubnetName" : "[concat(if(not(empty(parameters('vnetBaseName'))), parameters('vnetBaseName'), parameters('baseName')), '-master-subnet')]",
     "masterSubnetRef" : "[concat(variables('virtualNetworkID'), '/subnets/', variables('masterSubnetName'))]",
     "masterPublicIpAddressName" : "[concat(parameters('baseName'), '-master-pip')]",
     "masterPublicIpAddressID" : "[resourceId('Microsoft.Network/publicIPAddresses', variables('masterPublicIpAddressName'))]",
-    "masterLoadBalancerName" : "[concat(parameters('baseName'), '-public-lb')]",
+    "masterLoadBalancerName" : "[parameters('baseName')]",
     "masterLoadBalancerID" : "[resourceId('Microsoft.Network/loadBalancers', variables('masterLoadBalancerName'))]",
     "internalLoadBalancerName" : "[concat(parameters('baseName'), '-internal-lb')]",
     "internalLoadBalancerID" : "[resourceId('Microsoft.Network/loadBalancers', variables('internalLoadBalancerName'))]",
@@ -60,7 +67,7 @@
       "properties" : {
         "frontendIPConfigurations" : [
           {
-            "name" : "public-lb-ip",
+            "name" : "public-lb-ip-v4",
             "properties" : {
               "publicIPAddress" : {
                 "id" : "[variables('masterPublicIpAddressID')]"
@@ -70,7 +77,7 @@
         ],
         "backendAddressPools" : [
           {
-            "name" : "public-lb-backend"
+            "name" : "[variables('masterLoadBalancerName')]"
           }
         ],
         "loadBalancingRules" : [
@@ -78,10 +85,10 @@
             "name" : "api-internal",
             "properties" : {
               "frontendIPConfiguration" : {
-                "id" :"[concat(variables('masterLoadBalancerID'), '/frontendIPConfigurations/public-lb-ip')]"
+                "id" :"[concat(variables('masterLoadBalancerID'), '/frontendIPConfigurations/public-lb-ip-v4')]"
               },
               "backendAddressPool" : {
-                "id" : "[concat(variables('masterLoadBalancerID'), '/backendAddressPools/public-lb-backend')]"
+                "id" : "[concat(variables('masterLoadBalancerID'), '/backendAddressPools/', variables('masterLoadBalancerName'))]"
               },
               "protocol" : "Tcp",
               "loadDistribution" : "Default",

@@ -1,8 +1,8 @@
 package installconfig
 
 import (
+	survey "github.com/AlecAivazis/survey/v2"
 	"github.com/pkg/errors"
-	survey "gopkg.in/AlecAivazis/survey.v1"
 
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/validate"
@@ -25,7 +25,7 @@ func (a *pullSecret) Generate(asset.Parents) error {
 		{
 			Prompt: &survey.Password{
 				Message: "Pull Secret",
-				Help:    "The container registry pull secret for this cluster, as a single line of JSON (e.g. {\"auths\": {...}}).\n\nYou can get this secret from https://cloud.redhat.com/openshift/install/pull-secret",
+				Help:    "The container registry pull secret for this cluster, as a single line of JSON (e.g. {\"auths\": {...}}).\n\nYou can get this secret from https://console.redhat.com/openshift/install/pull-secret",
 			},
 			Validate: survey.ComposeValidators(survey.Required, func(ans interface{}) error {
 				return validate.ImagePullSecret(ans.(string))

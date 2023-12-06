@@ -1,7 +1,5 @@
 resource "vsphere_virtual_machine" "vm" {
-  for_each = var.hostnames_ip_addresses
-
-  name = element(split(".", each.key), 0)
+  name = var.vmname
 
   resource_pool_id = var.resource_pool_id
   datastore_id     = var.datastore_id
@@ -29,8 +27,10 @@ resource "vsphere_virtual_machine" "vm" {
   }
 
   extra_config = {
-    "guestinfo.ignition.config.data"          = base64encode(data.ignition_config.ign[each.key].rendered)
-    "guestinfo.ignition.config.data.encoding" = "base64"
+    "guestinfo.ignition.config.data"           = base64encode(var.ignition)
+    "guestinfo.ignition.config.data.encoding"  = "base64"
+    "guestinfo.afterburn.initrd.network-kargs" = "ip=${var.ipaddress}::${cidrhost(var.machine_cidr, 1)}:${cidrnetmask(var.machine_cidr)}:${var.vmname}:ens192:none:${join(":", var.dns_addresses)}"
+    "stealclock.enable"                        = "TRUE"
   }
 }
 

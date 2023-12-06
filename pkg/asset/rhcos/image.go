@@ -4,26 +4,30 @@ package rhcos
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/coreos/stream-metadata-go/arch"
 	"github.com/sirupsen/logrus"
 
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
-	configaws "github.com/openshift/installer/pkg/asset/installconfig/aws"
 	"github.com/openshift/installer/pkg/rhcos"
 	"github.com/openshift/installer/pkg/types"
+	"github.com/openshift/installer/pkg/types/alibabacloud"
 	"github.com/openshift/installer/pkg/types/aws"
 	"github.com/openshift/installer/pkg/types/azure"
 	"github.com/openshift/installer/pkg/types/baremetal"
+	"github.com/openshift/installer/pkg/types/external"
 	"github.com/openshift/installer/pkg/types/gcp"
-	"github.com/openshift/installer/pkg/types/kubevirt"
+	"github.com/openshift/installer/pkg/types/ibmcloud"
 	"github.com/openshift/installer/pkg/types/libvirt"
 	"github.com/openshift/installer/pkg/types/none"
+	"github.com/openshift/installer/pkg/types/nutanix"
 	"github.com/openshift/installer/pkg/types/openstack"
 	"github.com/openshift/installer/pkg/types/ovirt"
+	"github.com/openshift/installer/pkg/types/powervs"
 	"github.com/openshift/installer/pkg/types/vsphere"
 )
 
@@ -39,7 +43,7 @@ func (i *Image) Name() string {
 	return "Image"
 }
 
-// Dependencies returns no dependencies.
+// Dependencies returns dependencies used by the RHCOS asset.
 func (i *Image) Dependencies() []asset.Asset {
 	return []asset.Asset{
 		&installconfig.InstallConfig{},
@@ -66,67 +70,146 @@ func (i *Image) Generate(p asset.Parents) error {
 }
 
 func osImage(config *types.InstallConfig) (string, error) {
-	arch := config.ControlPlane.Architecture
-
-	var osimage string
-	var err error
 	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
 	defer cancel()
-	switch config.Platform.Name() {
-	case aws.Name:
-		if len(config.Platform.AWS.AMIID) > 0 {
-			osimage = config.Platform.AWS.AMIID
-			break
-		}
-		region := config.Platform.AWS.Region
-		if !configaws.IsKnownRegion(config.Platform.AWS.Region) {
-			region = "us-east-1"
-		}
-		osimage, err = rhcos.AMI(ctx, arch, region)
-		if region != config.Platform.AWS.Region {
-			osimage = fmt.Sprintf("%s,%s", osimage, region)
-		}
-	case gcp.Name:
-		osimage, err = rhcos.GCP(ctx, arch)
-	case libvirt.Name:
-		osimage, err = rhcos.QEMU(ctx, arch)
-	case openstack.Name:
-		if oi := config.Platform.OpenStack.ClusterOSImage; oi != "" {
-			osimage = oi
-			break
-		}
-		osimage, err = rhcos.OpenStack(ctx, arch)
-	case ovirt.Name:
-		osimage, err = rhcos.OpenStack(ctx, arch)
-	case kubevirt.Name:
-		osimage, err = rhcos.OpenStack(ctx, arch)
-	case azure.Name:
-		osimage, err = rhcos.VHD(ctx, arch)
-	case baremetal.Name:
-		// Check for RHCOS image URL override
-		if oi := config.Platform.BareMetal.ClusterOSImage; oi != "" {
-			osimage = oi
-			break
-		}
 
-		// Note that baremetal IPI currently uses the OpenStack image
-		// because this contains the necessary ironic config drive
-		// ignition support, which isn't enabled in the UPI BM images
-		osimage, err = rhcos.OpenStack(ctx, arch)
-	case vsphere.Name:
-		// Check for RHCOS image URL override
-		if config.Platform.VSphere.ClusterOSImage != "" {
-			osimage = config.Platform.VSphere.ClusterOSImage
-			break
-		}
+	archName := arch.RpmArch(string(config.ControlPlane.Architecture))
 
-		osimage, err = rhcos.VMware(ctx, arch)
-	case none.Name:
-	default:
-		return "", errors.New("invalid Platform")
-	}
+	st, err := rhcos.FetchCoreOSBuild(ctx)
 	if err != nil {
 		return "", err
 	}
-	return osimage, nil
+	streamArch, err := st.GetArchitecture(archName)
+	if err != nil {
+		return "", err
+	}
+	switch config.Platform.Name() {
+	case aws.Name:
+		if len(config.Platform.AWS.AMIID) > 0 {
+			return config.Platform.AWS.AMIID, nil
+		}
+		region := config.Platform.AWS.Region
+		if !rhcos.AMIRegions(config.ControlPlane.Architecture).Has(region) {
+			const globalResourceRegion = "us-east-1"
+			logrus.Debugf("No AMI found in %s. Using AMI from %s.", region, globalResourceRegion)
+			region = globalResourceRegion
+		}
+		osimage, err := st.GetAMI(archName, region)
+		if err != nil {
+			return "", err
+		}
+		if region != config.Platform.AWS.Region {
+			osimage = fmt.Sprintf("%s,%s", osimage, region)
+		}
+		return osimage, nil
+	case gcp.Name:
+		if streamArch.Images.Gcp != nil {
+			img := streamArch.Images.Gcp
+			return fmt.Sprintf("projects/%s/global/images/%s", img.Project, img.Name), nil
+		}
+		return "", fmt.Errorf("%s: No GCP build found", st.FormatPrefix(archName))
+	case ibmcloud.Name:
+		if a, ok := streamArch.Artifacts["ibmcloud"]; ok {
+			return rhcos.FindArtifactURL(a)
+		}
+		return "", fmt.Errorf("%s: No ibmcloud build found", st.FormatPrefix(archName))
+	case libvirt.Name:
+		// 𝅘𝅥𝅮 Everything's going to be a-ok 𝅘𝅥𝅮
+		if a, ok := streamArch.Artifacts["qemu"]; ok {
+			return rhcos.FindArtifactURL(a)
+		}
+		return "", fmt.Errorf("%s: No qemu build found", st.FormatPrefix(archName))
+	case ovirt.Name, openstack.Name:
+		op := config.Platform.OpenStack
+		if op != nil {
+			if oi := op.ClusterOSImage; oi != "" {
+				return oi, nil
+			}
+		}
+		if a, ok := streamArch.Artifacts["openstack"]; ok {
+			return rhcos.FindArtifactURL(a)
+		}
+		return "", fmt.Errorf("%s: No openstack build found", st.FormatPrefix(archName))
+	case azure.Name:
+		ext := streamArch.RHELCoreOSExtensions
+		if config.Platform.Azure.CloudName == azure.StackCloud {
+			return config.Platform.Azure.ClusterOSImage, nil
+		}
+		if ext == nil {
+			return "", fmt.Errorf("%s: No azure build found", st.FormatPrefix(archName))
+		}
+		azd := ext.AzureDisk
+		if azd == nil {
+			return "", fmt.Errorf("%s: No azure build found", st.FormatPrefix(archName))
+		}
+		return azd.URL, nil
+	case baremetal.Name:
+		// Check for image URL override
+		if oi := config.Platform.BareMetal.ClusterOSImage; oi != "" {
+			return oi, nil
+		}
+		// Use image from release payload
+		return "", nil
+	case vsphere.Name:
+		// Check for image URL override
+		if config.Platform.VSphere.ClusterOSImage != "" {
+			return config.Platform.VSphere.ClusterOSImage, nil
+		}
+
+		if a, ok := streamArch.Artifacts["vmware"]; ok {
+			// for an unknown reason vSphere OVAs are not
+			// integrity checked. Instead of going through
+			// FindArtifactURL just create the URL here.
+			artifact := a.Formats["ova"].Disk
+			u, err := url.Parse(artifact.Location)
+
+			if err != nil {
+				return "", err
+			}
+
+			// Add the sha256 query to the url
+			// This will later be used in pkg/rhcos/cache/cache.go
+			q := u.Query()
+			q.Set("sha256", artifact.Sha256)
+
+			u.RawQuery = q.Encode()
+
+			return u.String(), nil
+		}
+		return "", fmt.Errorf("%s: No vmware build found", st.FormatPrefix(archName))
+	case alibabacloud.Name:
+		osimage, err := st.GetAliyunImage(archName, config.Platform.AlibabaCloud.Region)
+		if err != nil {
+			return "", err
+		}
+		return osimage, nil
+	case powervs.Name:
+		// Check for image URL override
+		if config.Platform.PowerVS.ClusterOSImage != "" {
+			return config.Platform.PowerVS.ClusterOSImage, nil
+		}
+
+		if streamArch.Images.PowerVS != nil {
+			vpcRegion := powervs.Regions[config.Platform.PowerVS.Region].VPCRegion
+			img := streamArch.Images.PowerVS.Regions[vpcRegion]
+			logrus.Debug("Power VS using image ", img.Object)
+			return fmt.Sprintf("%s/%s", img.Bucket, img.Object), nil
+		}
+
+		return "", fmt.Errorf("%s: No Power VS build found", st.FormatPrefix(archName))
+	case external.Name:
+		return "", nil
+	case none.Name:
+		return "", nil
+	case nutanix.Name:
+		if config.Platform.Nutanix != nil && config.Platform.Nutanix.ClusterOSImage != "" {
+			return config.Platform.Nutanix.ClusterOSImage, nil
+		}
+		if a, ok := streamArch.Artifacts["nutanix"]; ok {
+			return rhcos.FindArtifactURL(a)
+		}
+		return "", fmt.Errorf("%s: No nutanix build found", st.FormatPrefix(archName))
+	default:
+		return "", fmt.Errorf("invalid platform %v", config.Platform.Name())
+	}
 }
