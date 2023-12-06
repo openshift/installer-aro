@@ -1,18 +1,18 @@
 package gcp
 
 import (
+	"context"
 	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	resourcemanager "google.golang.org/api/cloudresourcemanager/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-func (o *ClusterUninstaller) getProjectIAMPolicy() (*resourcemanager.Policy, error) {
+func (o *ClusterUninstaller) getProjectIAMPolicy(ctx context.Context) (*resourcemanager.Policy, error) {
 	o.Logger.Debug("Fetching project IAM policy")
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	req := &resourcemanager.GetIamPolicyRequest{}
 	policy, err := o.rmSvc.Projects.GetIamPolicy(o.ProjectID, req).Context(ctx).Do()
@@ -22,9 +22,9 @@ func (o *ClusterUninstaller) getProjectIAMPolicy() (*resourcemanager.Policy, err
 	return policy, nil
 }
 
-func (o *ClusterUninstaller) setProjectIAMPolicy(policy *resourcemanager.Policy) error {
+func (o *ClusterUninstaller) setProjectIAMPolicy(ctx context.Context, policy *resourcemanager.Policy) error {
 	o.Logger.Debug("Setting project IAM policy")
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	req := &resourcemanager.SetIamPolicyRequest{Policy: policy}
 	_, err := o.rmSvc.Projects.SetIamPolicy(o.ProjectID, req).Context(ctx).Do()
@@ -34,7 +34,7 @@ func (o *ClusterUninstaller) setProjectIAMPolicy(policy *resourcemanager.Policy)
 	return nil
 }
 
-func clearIAMPolicyBindings(policy *resourcemanager.Policy, emails sets.String, logger logrus.FieldLogger) bool {
+func (o *ClusterUninstaller) clearIAMPolicyBindings(policy *resourcemanager.Policy, emails sets.String, logger logrus.FieldLogger) bool {
 	removedBindings := false
 	for _, binding := range policy.Bindings {
 		members := []string{}
@@ -50,36 +50,6 @@ func clearIAMPolicyBindings(policy *resourcemanager.Policy, emails sets.String, 
 		binding.Members = members
 	}
 	return removedBindings
-}
-
-// destroyIAMPolicyBindings removes any role bindings from the project policy to
-// service accounts that start with the cluster's infra ID.
-func (o *ClusterUninstaller) destroyIAMPolicyBindings() error {
-	policy, err := o.getProjectIAMPolicy()
-	if err != nil {
-		return err
-	}
-
-	sas := o.getPendingItems("serviceaccount_binding")
-	emails := sets.NewString()
-	for _, item := range sas {
-		emails.Insert(item.url)
-	}
-	o.Logger.Debugf("candidate members to be removed: %s", emails.List())
-	if !clearIAMPolicyBindings(policy, emails, o.Logger) {
-		pendingPolicy := o.getPendingItems("iampolicy")
-		if len(pendingPolicy) > 0 {
-			o.Logger.Infof("Deleted IAM project role bindings")
-			o.deletePendingItems("iampolicy", pendingPolicy)
-		}
-		return nil
-	}
-	o.insertPendingItems("iampolicy", []cloudResource{{key: "policy", name: "policy", typeName: "iampolicy"}})
-	err = o.setProjectIAMPolicy(policy)
-	if err != nil {
-		return err
-	}
-	return errors.Errorf("%d items pending", 1)
 }
 
 // policyMemberToEmail takes member of IAM policy binding and converts it to service account email.

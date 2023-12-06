@@ -6,14 +6,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ghodss/yaml"
-	configv1 "github.com/openshift/api/config/v1"
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/yaml"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
+	"github.com/openshift/installer/pkg/types"
+	"github.com/openshift/installer/pkg/types/alibabacloud"
 	"github.com/openshift/installer/pkg/types/aws"
 	"github.com/openshift/installer/pkg/types/azure"
 	"github.com/openshift/installer/pkg/types/gcp"
@@ -65,9 +67,12 @@ func (p *Proxy) Generate(dependencies asset.Parents) error {
 		p.Config.Spec = configv1.ProxySpec{
 			HTTPProxy:  installConfig.Config.Proxy.HTTPProxy,
 			HTTPSProxy: installConfig.Config.Proxy.HTTPSProxy,
-			NoProxy:    trimSpaceNoProxy(installConfig.Config.Proxy.NoProxy),
+			NoProxy:    installConfig.Config.Proxy.NoProxy,
 		}
+	}
 
+	if installConfig.Config.AdditionalTrustBundlePolicy == types.PolicyAlways ||
+		installConfig.Config.Proxy != nil {
 		if installConfig.Config.AdditionalTrustBundle != "" {
 			p.Config.Spec.TrustedCA = configv1.ConfigMapNameReference{
 				Name: additionalTrustBundleConfigMapName,
@@ -86,7 +91,7 @@ func (p *Proxy) Generate(dependencies asset.Parents) error {
 		p.Config.Status = configv1.ProxyStatus{
 			HTTPProxy:  installConfig.Config.Proxy.HTTPProxy,
 			HTTPSProxy: installConfig.Config.Proxy.HTTPSProxy,
-			NoProxy:    trimSpaceNoProxy(noProxy),
+			NoProxy:    noProxy,
 		}
 	}
 
@@ -107,7 +112,7 @@ func (p *Proxy) Generate(dependencies asset.Parents) error {
 
 // createNoProxy combines user-provided & platform-specific values to create a comma-separated
 // list of unique NO_PROXY values. Platform values are: serviceCIDR, podCIDR, machineCIDR,
-// localhost, 127.0.0.1, api.clusterdomain, api-int.clusterdomain, etcd-idx.clusterdomain
+// localhost, 127.0.0.1, api.clusterdomain, api-int.clusterdomain.
 // If platform is AWS, GCP, Azure, or OpenStack add 169.254.169.254 to the list of NO_PROXY addresses.
 // If platform is AWS, add ".ec2.internal" for region us-east-1 or for all other regions add
 // ".<aws_region>.compute.internal" to the list of NO_PROXY addresses. We should not proxy
@@ -137,6 +142,8 @@ func createNoProxy(installConfig *installconfig.InstallConfig, network *Networki
 	switch platform {
 	case aws.Name, gcp.Name, azure.Name, openstack.Name:
 		set.Insert("169.254.169.254")
+	case alibabacloud.Name:
+		set.Insert("100.100.100.200")
 	}
 
 	// TODO: Add support for additional cloud providers.
@@ -149,15 +156,20 @@ func createNoProxy(installConfig *installconfig.InstallConfig, network *Networki
 		}
 	}
 
+	// TODO: IBM[#95]: proxy
+
+	if platform == azure.Name && installConfig.Azure.CloudName != azure.PublicCloud {
+		// https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16
+		set.Insert("168.63.129.16")
+		if installConfig.Azure.CloudName == azure.StackCloud {
+			set.Insert(installConfig.Config.Azure.ARMEndpoint)
+		}
+	}
+
 	// From https://cloud.google.com/vpc/docs/special-configurations add GCP metadata.
 	// "metadata.google.internal." added due to https://bugzilla.redhat.com/show_bug.cgi?id=1754049
 	if platform == gcp.Name {
 		set.Insert("metadata", "metadata.google.internal", "metadata.google.internal.")
-	}
-
-	for i := int64(0); i < *installConfig.Config.ControlPlane.Replicas; i++ {
-		etcdHost := fmt.Sprintf("etcd-%d.%s", i, installConfig.Config.ClusterDomain())
-		set.Insert(etcdHost)
 	}
 
 	for _, network := range installConfig.Config.Networking.ServiceNetwork {
@@ -189,13 +201,4 @@ func (p *Proxy) Files() []*asset.File {
 // Load loads the already-rendered files back from disk.
 func (p *Proxy) Load(f asset.FileFetcher) (bool, error) {
 	return false, nil
-}
-
-// trimSpaceNoProxy removes the space from comma separated items.
-func trimSpaceNoProxy(noProxy string) string {
-	split := strings.Split(noProxy, ",")
-	for idx, v := range split {
-		split[idx] = strings.TrimSpace(v)
-	}
-	return strings.Join(split, ",")
 }

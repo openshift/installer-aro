@@ -17,7 +17,7 @@ type SecGroupRule struct {
 	// instance. An egress rule is applied to traffic leaving the instance.
 	Direction string
 
-	// Descripton of the rule
+	// Description of the rule
 	Description string `json:"description"`
 
 	// Must be IPv4 or IPv6, and addresses represented in CIDR must match the
@@ -80,6 +80,10 @@ func (r SecGroupRulePage) NextPageURL() (string, error) {
 
 // IsEmpty checks whether a SecGroupRulePage struct is empty.
 func (r SecGroupRulePage) IsEmpty() (bool, error) {
+	if r.StatusCode == 204 {
+		return true, nil
+	}
+
 	is, err := ExtractRules(r)
 	return len(is) == 0, err
 }

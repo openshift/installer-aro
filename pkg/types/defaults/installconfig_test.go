@@ -18,13 +18,16 @@ import (
 	nonedefaults "github.com/openshift/installer/pkg/types/none/defaults"
 	"github.com/openshift/installer/pkg/types/openstack"
 	openstackdefaults "github.com/openshift/installer/pkg/types/openstack/defaults"
+	"github.com/openshift/installer/pkg/types/ovirt"
+	ovirtdefaults "github.com/openshift/installer/pkg/types/ovirt/defaults"
 )
 
 func defaultInstallConfig() *types.InstallConfig {
 	return &types.InstallConfig{
+		AdditionalTrustBundlePolicy: defaultAdditionalTrustBundlePolicy(),
 		Networking: &types.Networking{
 			MachineNetwork: []types.MachineNetworkEntry{
-				{CIDR: *defaultMachineCIDR},
+				{CIDR: *DefaultMachineCIDR},
 			},
 			NetworkType:    defaultNetworkType,
 			ServiceNetwork: []ipnet.IPNet{*defaultServiceNetwork},
@@ -39,6 +42,12 @@ func defaultInstallConfig() *types.InstallConfig {
 		Compute:      []types.MachinePool{*defaultMachinePool("worker")},
 		Publish:      types.ExternalPublishingStrategy,
 	}
+}
+
+func defaultInstallConfigWithEdge() *types.InstallConfig {
+	c := defaultInstallConfig()
+	c.Compute = append(c.Compute, *defaultMachinePool("edge"))
+	return c
 }
 
 func defaultAWSInstallConfig() *types.InstallConfig {
@@ -70,6 +79,21 @@ func defaultOpenStackInstallConfig() *types.InstallConfig {
 	c.Platform.OpenStack = &openstack.Platform{}
 	openstackdefaults.SetPlatformDefaults(c.Platform.OpenStack, c.Networking)
 	return c
+}
+
+func defaultOvirtInstallConfig() *types.InstallConfig {
+	c := defaultInstallConfig()
+	c.Platform.Ovirt = &ovirt.Platform{}
+	ovirtdefaults.SetPlatformDefaults(c.Platform.Ovirt)
+	ovirtdefaults.SetControlPlaneDefaults(c.Platform.Ovirt, c.ControlPlane)
+	for i := range c.Compute {
+		ovirtdefaults.SetComputeDefaults(c.Platform.Ovirt, &c.Compute[i])
+	}
+	return c
+}
+
+func defaultAdditionalTrustBundlePolicy() types.PolicyType {
+	return types.PolicyProxyOnly
 }
 
 func defaultNoneInstallConfig() *types.InstallConfig {
@@ -125,6 +149,15 @@ func TestSetInstallConfigDefaults(t *testing.T) {
 				},
 			},
 			expected: defaultOpenStackInstallConfig(),
+		},
+		{
+			name: "empty oVirt",
+			config: &types.InstallConfig{
+				Platform: types.Platform{
+					Ovirt: &ovirt.Platform{},
+				},
+			},
+			expected: defaultOvirtInstallConfig(),
 		},
 		{
 			name: "Networking present",
@@ -192,11 +225,25 @@ func TestSetInstallConfigDefaults(t *testing.T) {
 		{
 			name: "Compute present",
 			config: &types.InstallConfig{
-				Compute: []types.MachinePool{{Name: "test-compute"}},
+				Compute: []types.MachinePool{{Name: "worker"}},
 			},
 			expected: func() *types.InstallConfig {
 				c := defaultInstallConfig()
-				c.Compute = []types.MachinePool{*defaultMachinePool("test-compute")}
+				c.Compute = []types.MachinePool{*defaultMachinePool("worker")}
+				return c
+			}(),
+		},
+		{
+			name: "Edge Compute present",
+			config: &types.InstallConfig{
+				Compute: []types.MachinePool{{Name: "worker"}, {Name: "edge"}},
+			},
+			expected: func() *types.InstallConfig {
+				c := defaultInstallConfigWithEdge()
+				c.Compute = []types.MachinePool{
+					*defaultMachinePool("worker"),
+					*defaultEdgeMachinePool("edge"),
+				}
 				return c
 			}(),
 		},

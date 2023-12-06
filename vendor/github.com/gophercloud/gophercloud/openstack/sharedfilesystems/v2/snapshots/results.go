@@ -139,6 +139,10 @@ func (r SnapshotPage) LastMarker() (string, error) {
 
 // IsEmpty satisifies the IsEmpty method of the Page interface
 func (r SnapshotPage) IsEmpty() (bool, error) {
+	if r.StatusCode == 204 {
+		return true, nil
+	}
+
 	snapshots, err := ExtractSnapshots(r)
 	return len(snapshots) == 0, err
 }
@@ -168,4 +172,14 @@ type GetResult struct {
 // UpdateResult contains the response body and error from an Update request.
 type UpdateResult struct {
 	commonResult
+}
+
+// ResetStatusResult contains the response error from an ResetStatus request.
+type ResetStatusResult struct {
+	gophercloud.ErrResult
+}
+
+// ForceDeleteResult contains the response error from an ForceDelete request.
+type ForceDeleteResult struct {
+	gophercloud.ErrResult
 }

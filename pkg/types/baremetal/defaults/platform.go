@@ -2,10 +2,14 @@ package defaults
 
 import (
 	"fmt"
-	"github.com/openshift/installer/pkg/ipnet"
+	"math/rand"
 	"net"
+	"sort"
+	"time"
 
 	"github.com/apparentlymart/go-cidr/cidr"
+
+	"github.com/openshift/installer/pkg/ipnet"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/baremetal"
 )
@@ -17,8 +21,9 @@ const (
 	ExternalBridge          = "baremetal"
 	ProvisioningBridge      = "provisioning"
 	HardwareProfile         = "default"
-	APIVIP                  = ""
-	IngressVIP              = ""
+	BootMode                = baremetal.UEFI
+	ExternalMACAddress      = ""
+	ProvisioningMACAddress  = ""
 )
 
 // Wrapper for net.LookupHost so we can override in the test
@@ -26,10 +31,34 @@ var lookupHost = func(host string) (addrs []string, err error) {
 	return net.LookupHost(host)
 }
 
+// GenerateMAC a randomized MAC address with the libvirt prefix
+func GenerateMAC() string {
+	buf := make([]byte, 3)
+	rand.Seed(time.Now().UnixNano())
+	rand.Read(buf)
+
+	// set local bit and unicast
+	buf[0] = (buf[0] | 2) & 0xfe
+
+	// avoid libvirt-reserved addresses
+	if buf[0] == 0xfe {
+		buf[0] = 0xee
+	}
+
+	return fmt.Sprintf("52:54:00:%02x:%02x:%02x", buf[0], buf[1], buf[2])
+}
+
 // SetPlatformDefaults sets the defaults for the platform.
 func SetPlatformDefaults(p *baremetal.Platform, c *types.InstallConfig) {
 	if p.LibvirtURI == "" {
 		p.LibvirtURI = LibvirtURI
+	}
+
+	if p.ExternalMACAddress == "" {
+		p.ExternalMACAddress = GenerateMAC()
+	}
+	if p.ProvisioningMACAddress == "" {
+		p.ProvisioningMACAddress = GenerateMAC()
 	}
 
 	if p.ProvisioningNetwork == "" {
@@ -88,27 +117,29 @@ func SetPlatformDefaults(p *baremetal.Platform, c *types.InstallConfig) {
 		if host.HardwareProfile == "" {
 			host.HardwareProfile = HardwareProfile
 		}
-	}
 
-	if p.APIVIP == APIVIP {
-		// This name should resolve to exactly one address
-		vip, err := lookupHost("api." + c.ClusterDomain())
-		if err != nil {
-			// This will fail validation and abort the install
-			p.APIVIP = fmt.Sprintf("DNS lookup failure: %s", err.Error())
-		} else {
-			p.APIVIP = vip[0]
+		if host.BootMode == "" {
+			host.BootMode = BootMode
 		}
 	}
 
-	if p.IngressVIP == IngressVIP {
+	if len(p.APIVIPs) == 0 && p.DeprecatedAPIVIP == "" {
 		// This name should resolve to exactly one address
-		vip, err := lookupHost("test.apps." + c.ClusterDomain())
-		if err != nil {
-			// This will fail validation and abort the install
-			p.IngressVIP = fmt.Sprintf("DNS lookup failure: %s", err.Error())
-		} else {
-			p.IngressVIP = vip[0]
+		if vip, err := lookupHost("api." + c.ClusterDomain()); err == nil {
+			p.APIVIPs = []string{vip[0]}
 		}
+	}
+
+	if len(p.IngressVIPs) == 0 && p.DeprecatedIngressVIP == "" {
+		// This name should resolve to exactly one address
+		if vip, err := lookupHost("test.apps." + c.ClusterDomain()); err == nil {
+			p.IngressVIPs = []string{vip[0]}
+		}
+	}
+
+	if p.Hosts != nil {
+		sort.SliceStable(p.Hosts, func(i, j int) bool {
+			return p.Hosts[i].CompareByRole(p.Hosts[j])
+		})
 	}
 }

@@ -4,7 +4,6 @@ import (
 	ovirtsdk4 "github.com/ovirt/go-ovirt"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/AlecAivazis/survey.v1"
 
 	"github.com/openshift/installer/pkg/types/ovirt"
 )
@@ -64,32 +63,9 @@ func Platform() (*ovirt.Platform, error) {
 		return &p, err
 	}
 
-	err = survey.Ask([]*survey.Question{
-		{
-			Prompt: &survey.Input{
-				Message: "Internal API virtual IP",
-				Help:    "This is the virtual IP address that will be used to address the OpenShift control plane. Make sure the IP address is not in use.",
-				Default: "",
-			},
-			Validate: survey.ComposeValidators(survey.Required),
-		},
-	}, &p.APIVIP)
+	err = askVIPs(&p)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed UserInput")
-	}
-
-	err = survey.Ask([]*survey.Question{
-		{
-			Prompt: &survey.Input{
-				Message: "Ingress virtual IP",
-				Help:    "This is the virtual IP address that will be used to address the OpenShift ingress routers. Make sure the IP address is not in use.",
-				Default: "",
-			},
-			Validate: survey.ComposeValidators(survey.Required),
-		},
-	}, &p.IngressVIP)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed UserInput")
+		return &p, err
 	}
 
 	return &p, nil

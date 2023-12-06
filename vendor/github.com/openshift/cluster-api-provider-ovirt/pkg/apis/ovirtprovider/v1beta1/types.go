@@ -72,6 +72,42 @@ type OvirtMachineProviderSpec struct {
 	// All network interfaces from the template are discarded and new ones will
 	// be created, unless the list is empty or nil
 	NetworkInterfaces []*NetworkInterface `json:"network_interfaces,omitempty"`
+
+	// VMAffinityGroup contains the name of the OpenShift cluster affinity groups
+	// It will be used to add the newly created machine to the affinity groups
+	AffinityGroupsNames []string `json:"affinity_groups_names,omitempty"`
+
+	// AutoPinningPolicy defines the policy to automatically set the CPU
+	// and NUMA including pinning to the host for the instance.
+	// One of "none, resize_and_pin"
+	AutoPinningPolicy string `json:"auto_pinning_policy,omitempty"`
+
+	// Hugepages is the size of a VM's hugepages to use in KiBs.
+	// Only 2048 and 1048576 supported.
+	Hugepages int32 `json:"hugepages,omitempty"`
+
+	// GuaranteedMemoryMB is the size of a VM's guaranteed memory in MiBs.
+	GuaranteedMemoryMB int32 `json:"guaranteed_memory_mb,omitempty"`
+
+	// Clone makes sure that the disks are cloned from the template and are not linked.
+	// Defaults to true for high performance and server VM types, false for desktop types.
+	//
+	// Note: this option is not documented in the OpenShift documentation. This is intentional as it has sane defaults
+	// that shouldn't be changed unless needed for debugging or resolving issues in cooperation with Red Hat support.
+	//
+	// +optional
+	Clone *bool `json:"clone,omitempty"`
+
+	// Sparse indicates that sparse provisioning should not be used and disks should be preallocated.
+	// Defaults to true.
+	// +optional
+	Sparse *bool `json:"sparse,omitempty"`
+
+	// Format is the disk format that the disks are in. Can be "cow" or "raw". "raw" disables several features that
+	// may be needed, such as incremental backups. Defaults to "cow".
+	// +kubebuilder:validation:Enum="";raw;cow
+	// +optional
+	Format string `json:"format,omitempty"`
 }
 
 // CPU defines the VM cpu, made of (Sockets * Cores * Threads)
@@ -141,40 +177,6 @@ type OvirtMachineProviderStatus struct {
 	// InstanceState is the provisioning state of the oVirt Instance.
 	// +optional
 	InstanceState *string `json:"instanceState,omitempty"`
-
-	// Conditions is a set of conditions associated with the Machine to indicate
-	// errors or other status
-	Conditions []OvirtMachineProviderCondition `json:"conditions,omitempty"`
-}
-
-// OvirtMachineProviderConditionType is a valid value for OvirtMachineProviderCondition.Type
-type OvirtMachineProviderConditionType string
-
-// Valid conditions for an oVirt machine instance
-const (
-	// MachineCreated indicates whether the machine has been created or not. If not,
-	// it should include a reason and message for the failure.
-	MachineCreated OvirtMachineProviderConditionType = "MachineCreated"
-)
-
-// OvirtMachineProviderCondition is a condition in a OvirtMachineProviderStatus
-type OvirtMachineProviderCondition struct {
-	// Type is the type of the condition.
-	Type OvirtMachineProviderConditionType `json:"type"`
-	// Status is the status of the condition.
-	Status corev1.ConditionStatus `json:"status"`
-	// LastProbeTime is the last time we probed the condition.
-	// +optional
-	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty"`
-	// LastTransitionTime is the last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-	// Reason is a unique, one-word, CamelCase reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// Message is a human-readable message indicating details about last transition.
-	// +optional
-	Message string `json:"message,omitempty"`
 }
 
 func init() {

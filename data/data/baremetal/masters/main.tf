@@ -1,6 +1,18 @@
+provider "ironic" {
+  url                = var.ironic_uri
+  inspector          = var.inspector_uri
+  microversion       = "1.69"
+  timeout            = 3600
+  auth_strategy      = "http_basic"
+  ironic_username    = var.ironic_username
+  ironic_password    = var.ironic_password
+  inspector_username = var.ironic_username
+  inspector_password = var.ironic_password
+}
+
 resource "ironic_node_v1" "openshift-master-host" {
   count          = var.master_count
-  name           = var.hosts[count.index]["name"]
+  name           = var.masters[count.index]["name"]
   resource_class = "baremetal"
 
   inspect   = true
@@ -9,7 +21,7 @@ resource "ironic_node_v1" "openshift-master-host" {
 
   ports = [
     {
-      address     = var.hosts[count.index]["port_address"]
+      address     = var.masters[count.index]["port_address"]
       pxe_enabled = "true"
     },
   ]
@@ -17,35 +29,29 @@ resource "ironic_node_v1" "openshift-master-host" {
   properties  = var.properties[count.index]
   root_device = var.root_devices[count.index]
 
-  driver      = var.hosts[count.index]["driver"]
+  driver      = var.masters[count.index]["driver"]
   driver_info = var.driver_infos[count.index]
 
-  boot_interface       = var.hosts[count.index]["boot_interface"]
-  management_interface = var.hosts[count.index]["management_interface"]
-  power_interface      = var.hosts[count.index]["power_interface"]
-  raid_interface       = var.hosts[count.index]["raid_interface"]
-  vendor_interface     = var.hosts[count.index]["vendor_interface"]
-}
-
-resource "ironic_allocation_v1" "openshift-master-allocation" {
-  name           = "master-${count.index}"
-  count          = var.master_count
-  resource_class = "baremetal"
-
-  candidate_nodes = ironic_node_v1.openshift-master-host.*.id
+  boot_interface       = var.masters[count.index]["boot_interface"]
+  management_interface = var.masters[count.index]["management_interface"]
+  power_interface      = var.masters[count.index]["power_interface"]
+  raid_interface       = var.masters[count.index]["raid_interface"]
+  vendor_interface     = var.masters[count.index]["vendor_interface"]
+  deploy_interface     = var.masters[count.index]["deploy_interface"]
+  raid_config          = var.masters[count.index]["raid_config"]
+  bios_settings        = var.masters[count.index]["bios_settings"]
 }
 
 resource "ironic_deployment" "openshift-master-deployment" {
   count = var.master_count
   node_uuid = element(
-    ironic_allocation_v1.openshift-master-allocation.*.node_uuid,
+    ironic_node_v1.openshift-master-host.*.id,
     count.index,
   )
 
-  instance_info         = var.instance_infos[count.index]
-  user_data_url         = var.master_ignition_url
-  user_data_url_ca_cert = var.master_ignition_url_ca_cert
-  user_data_url_headers = var.master_ignition_url_headers
+  instance_info = var.instance_infos[count.index]
+  user_data     = var.ignition_master
+  deploy_steps  = var.deploy_steps[count.index]
 }
 
 data "ironic_introspection" "openshift-master-introspection" {

@@ -2,13 +2,13 @@ package installconfig
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
 
+	survey "github.com/AlecAivazis/survey/v2"
+	"github.com/AlecAivazis/survey/v2/core"
 	"github.com/pkg/errors"
-	survey "gopkg.in/AlecAivazis/survey.v1"
 
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/validate"
@@ -30,7 +30,7 @@ func (a *sshPublicKey) Dependencies() []asset.Asset {
 }
 
 func readSSHKey(path string) (string, error) {
-	keyAsBytes, err := ioutil.ReadFile(path)
+	keyAsBytes, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -79,19 +79,23 @@ func (a *sshPublicKey) Generate(asset.Parents) error {
 	sort.Strings(paths)
 
 	var path string
-	if err := survey.AskOne(&survey.Select{
-		Message: "SSH Public Key",
-		Help:    "The SSH public key used to access all nodes within the cluster. This is optional.",
-		Options: paths,
-		Default: noSSHKey,
-	}, &path, func(ans interface{}) error {
-		choice := ans.(string)
-		i := sort.SearchStrings(paths, choice)
-		if i == len(paths) || paths[i] != choice {
-			return fmt.Errorf("invalid path %q", choice)
-		}
-		return nil
-	}); err != nil {
+	if err := survey.AskOne(
+		&survey.Select{
+			Message: "SSH Public Key",
+			Help:    "The SSH public key used to access all nodes within the cluster. This is optional.",
+			Options: paths,
+			Default: noSSHKey,
+		},
+		&path,
+		survey.WithValidator(func(ans interface{}) error {
+			choice := ans.(core.OptionAnswer).Value
+			i := sort.SearchStrings(paths, choice)
+			if i == len(paths) || paths[i] != choice {
+				return fmt.Errorf("invalid path %q", choice)
+			}
+			return nil
+		}),
+	); err != nil {
 		return errors.Wrap(err, "failed UserInput")
 	}
 

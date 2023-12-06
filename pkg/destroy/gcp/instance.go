@@ -1,13 +1,15 @@
 package gcp
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
-
-	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
+
+	"github.com/openshift/installer/pkg/types/gcp"
 )
 
 // getInstanceNameAndZone extracts an instance and zone name from an instance URL in the form:
@@ -24,13 +26,13 @@ func (o *ClusterUninstaller) getInstanceNameAndZone(instanceURL string) (string,
 	return "", ""
 }
 
-func (o *ClusterUninstaller) listInstances() ([]cloudResource, error) {
-	byName, err := o.listInstancesWithFilter("items/*/instances(name,zone,status),nextPageToken", o.clusterIDFilter(), nil)
+func (o *ClusterUninstaller) listInstances(ctx context.Context) ([]cloudResource, error) {
+	byName, err := o.listInstancesWithFilter(ctx, "items/*/instances(name,zone,status,machineType),nextPageToken", o.clusterIDFilter(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	byLabel, err := o.listInstancesWithFilter("items/*/instances(name,zone,status),nextPageToken", o.clusterLabelFilter(), nil)
+	byLabel, err := o.listInstancesWithFilter(ctx, "items/*/instances(name,zone,status,machineType),nextPageToken", o.clusterLabelFilter(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -41,9 +43,9 @@ func (o *ClusterUninstaller) listInstances() ([]cloudResource, error) {
 // The fields parameter specifies which fields should be returned in the result, the filter string contains
 // a filter string passed to the API to filter results. The filterFunc is a client-side filtering function
 // that determines whether a particular result should be returned or not.
-func (o *ClusterUninstaller) listInstancesWithFilter(fields string, filter string, filterFunc func(*compute.Instance) bool) ([]cloudResource, error) {
+func (o *ClusterUninstaller) listInstancesWithFilter(ctx context.Context, fields string, filter string, filterFunc func(*compute.Instance) bool) ([]cloudResource, error) {
 	o.Logger.Debugf("Listing compute instances")
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	result := []cloudResource{}
 	req := o.computeSvc.Instances.AggregatedList(o.ProjectID).Fields(googleapi.Field(fields))
@@ -62,6 +64,16 @@ func (o *ClusterUninstaller) listInstancesWithFilter(fields string, filter strin
 						status:   item.Status,
 						typeName: "instance",
 						zone:     zoneName,
+						quota: []gcp.QuotaUsage{{
+							Metric: &gcp.Metric{
+								Service: gcp.ServiceComputeEngineAPI,
+								Limit:   "cpus",
+								Dimensions: map[string]string{
+									"region": getRegionFromZone(zoneName),
+								},
+							},
+							Amount: o.cpusByMachineType[getNameFromURL("machineTypes", item.MachineType)],
+						}},
 					})
 				}
 			}
@@ -74,9 +86,9 @@ func (o *ClusterUninstaller) listInstancesWithFilter(fields string, filter strin
 	return result, nil
 }
 
-func (o *ClusterUninstaller) deleteInstance(item cloudResource) error {
+func (o *ClusterUninstaller) deleteInstance(ctx context.Context, item cloudResource) error {
 	o.Logger.Debugf("Deleting compute instance %s in zone %s", item.name, item.zone)
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	op, err := o.computeSvc.Instances.Delete(o.ProjectID, item.zone, item.name).RequestId(o.requestID(item.typeName, item.zone, item.name)).Context(ctx).Do()
 	if err != nil && !isNoOp(err) {
@@ -97,15 +109,15 @@ func (o *ClusterUninstaller) deleteInstance(item cloudResource) error {
 
 // destroyInstances searches for instances across all zones that have a name that starts with
 // with the cluster's infra ID.
-func (o *ClusterUninstaller) destroyInstances() error {
-	found, err := o.listInstances()
+func (o *ClusterUninstaller) destroyInstances(ctx context.Context) error {
+	found, err := o.listInstances(ctx)
 	if err != nil {
 		return err
 	}
 	items := o.insertPendingItems("instance", found)
 	errs := []error{}
 	for _, item := range items {
-		err := o.deleteInstance(item)
+		err := o.deleteInstance(ctx, item)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -114,9 +126,9 @@ func (o *ClusterUninstaller) destroyInstances() error {
 	return aggregateError(errs, len(items))
 }
 
-func (o *ClusterUninstaller) stopInstance(item cloudResource) error {
+func (o *ClusterUninstaller) stopInstance(ctx context.Context, item cloudResource) error {
 	o.Logger.Debugf("Stopping compute instance %s in zone %s", item.name, item.zone)
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	op, err := o.computeSvc.Instances.Stop(o.ProjectID, item.zone, item.name).RequestId(o.requestID("stopinstance", item.zone, item.name)).Context(ctx).Do()
 	if err != nil && !isNoOp(err) {
@@ -137,19 +149,21 @@ func (o *ClusterUninstaller) stopInstance(item cloudResource) error {
 
 // stopComputeInstances searches for instances across all zones that have a name that starts with
 // the infra ID prefix and are not yet stopped. It then stops each instance found.
-func (o *ClusterUninstaller) stopInstances() error {
-	found, err := o.listInstances()
+func (o *ClusterUninstaller) stopInstances(ctx context.Context) error {
+	found, err := o.listInstances(ctx)
 	if err != nil {
 		return err
 	}
 	for _, item := range found {
 		if item.status != "TERMINATED" {
+			// we record instance quota when we delete the instance, not when we terminate it
+			item.quota = nil
 			o.insertPendingItems("stopinstance", []cloudResource{item})
 		}
 	}
 	items := o.getPendingItems("stopinstance")
 	for _, item := range items {
-		err := o.stopInstance(item)
+		err := o.stopInstance(ctx, item)
 		if err != nil {
 			o.errorTracker.suppressWarning(item.key, err, o.Logger)
 		}

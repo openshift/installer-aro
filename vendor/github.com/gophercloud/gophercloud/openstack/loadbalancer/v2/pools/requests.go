@@ -2,6 +2,7 @@ package pools
 
 import (
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/monitors"
 	"github.com/gophercloud/gophercloud/pagination"
 )
 
@@ -64,12 +65,17 @@ const (
 	LBMethodRoundRobin       LBMethod = "ROUND_ROBIN"
 	LBMethodLeastConnections LBMethod = "LEAST_CONNECTIONS"
 	LBMethodSourceIp         LBMethod = "SOURCE_IP"
+	LBMethodSourceIpPort     LBMethod = "SOURCE_IP_PORT"
 
 	ProtocolTCP   Protocol = "TCP"
 	ProtocolUDP   Protocol = "UDP"
 	ProtocolPROXY Protocol = "PROXY"
 	ProtocolHTTP  Protocol = "HTTP"
 	ProtocolHTTPS Protocol = "HTTPS"
+	// Protocol PROXYV2 requires octavia microversion 2.22
+	ProtocolPROXYV2 Protocol = "PROXYV2"
+	// Protocol SCTP requires octavia microversion 2.23
+	ProtocolSCTP Protocol = "SCTP"
 )
 
 // CreateOptsBuilder allows extensions to add additional parameters to the
@@ -82,21 +88,22 @@ type CreateOptsBuilder interface {
 // operation.
 type CreateOpts struct {
 	// The algorithm used to distribute load between the members of the pool. The
-	// current specification supports LBMethodRoundRobin, LBMethodLeastConnections
-	// and LBMethodSourceIp as valid values for this attribute.
+	// current specification supports LBMethodRoundRobin, LBMethodLeastConnections,
+	// LBMethodSourceIp and LBMethodSourceIpPort as valid values for this attribute.
 	LBMethod LBMethod `json:"lb_algorithm" required:"true"`
 
 	// The protocol used by the pool members, you can use either
-	// ProtocolTCP, ProtocolUDP, ProtocolPROXY, ProtocolHTTP, or ProtocolHTTPS.
+	// ProtocolTCP, ProtocolUDP, ProtocolPROXY, ProtocolHTTP, ProtocolHTTPS,
+	// ProtocolSCTP or ProtocolPROXYV2.
 	Protocol Protocol `json:"protocol" required:"true"`
 
 	// The Loadbalancer on which the members of the pool will be associated with.
 	// Note: one of LoadbalancerID or ListenerID must be provided.
-	LoadbalancerID string `json:"loadbalancer_id,omitempty" xor:"ListenerID"`
+	LoadbalancerID string `json:"loadbalancer_id,omitempty"`
 
 	// The Listener on which the members of the pool will be associated with.
 	// Note: one of LoadbalancerID or ListenerID must be provided.
-	ListenerID string `json:"listener_id,omitempty" xor:"LoadbalancerID"`
+	ListenerID string `json:"listener_id,omitempty"`
 
 	// ProjectID is the UUID of the project who owns the Pool.
 	// Only administrative users can specify a project UUID other than their own.
@@ -115,6 +122,23 @@ type CreateOpts struct {
 	// The administrative state of the Pool. A valid value is true (UP)
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
+
+	// Members is a slice of BatchUpdateMemberOpts which allows a set of
+	// members to be created at the same time the pool is created.
+	//
+	// This is only possible to use when creating a fully populated
+	// Loadbalancer.
+	Members []BatchUpdateMemberOpts `json:"members,omitempty"`
+
+	// Monitor is an instance of monitors.CreateOpts which allows a monitor
+	// to be created at the same time the pool is created.
+	//
+	// This is only possible to use when creating a fully populated
+	// Loadbalancer.
+	Monitor *monitors.CreateOpts `json:"healthmonitor,omitempty"`
+
+	// Tags is a set of resource tags. New in version 2.5
+	Tags []string `json:"tags,omitempty"`
 }
 
 // ToPoolCreateMap builds a request body from CreateOpts.
@@ -158,13 +182,19 @@ type UpdateOpts struct {
 	Description *string `json:"description,omitempty"`
 
 	// The algorithm used to distribute load between the members of the pool. The
-	// current specification supports LBMethodRoundRobin, LBMethodLeastConnections
-	// and LBMethodSourceIp as valid values for this attribute.
+	// current specification supports LBMethodRoundRobin, LBMethodLeastConnections,
+	// LBMethodSourceIp and LBMethodSourceIpPort as valid values for this attribute.
 	LBMethod LBMethod `json:"lb_algorithm,omitempty"`
 
 	// The administrative state of the Pool. A valid value is true (UP)
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
+
+	// Persistence is the session persistence of the pool.
+	Persistence *SessionPersistence `json:"session_persistence,omitempty"`
+
+	// Tags is a set of resource tags. New in version 2.5
+	Tags *[]string `json:"tags,omitempty"`
 }
 
 // ToPoolUpdateMap builds a request body from UpdateOpts.
@@ -280,7 +310,9 @@ type CreateMemberOpts struct {
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
 
-	// Is the member a backup? Backup members only receive traffic when all non-backup members are down.
+	// Is the member a backup? Backup members only receive traffic when all
+	// non-backup members are down.
+	// Requires microversion 2.1 or later.
 	Backup *bool `json:"backup,omitempty"`
 
 	// An alternate IP address used for health monitoring a backend member.
@@ -288,6 +320,10 @@ type CreateMemberOpts struct {
 
 	// An alternate protocol port used for health monitoring a backend member.
 	MonitorPort *int `json:"monitor_port,omitempty"`
+
+	// A list of simple strings assigned to the resource.
+	// Requires microversion 2.5 or later.
+	Tags []string `json:"tags,omitempty"`
 }
 
 // ToMemberCreateMap builds a request body from CreateMemberOpts.
@@ -335,6 +371,21 @@ type UpdateMemberOpts struct {
 	// The administrative state of the Pool. A valid value is true (UP)
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
+
+	// Is the member a backup? Backup members only receive traffic when all
+	// non-backup members are down.
+	// Requires microversion 2.1 or later.
+	Backup *bool `json:"backup,omitempty"`
+
+	// An alternate IP address used for health monitoring a backend member.
+	MonitorAddress *string `json:"monitor_address,omitempty"`
+
+	// An alternate protocol port used for health monitoring a backend member.
+	MonitorPort *int `json:"monitor_port,omitempty"`
+
+	// A list of simple strings assigned to the resource.
+	// Requires microversion 2.5 or later.
+	Tags []string `json:"tags,omitempty"`
 }
 
 // ToMemberUpdateMap builds a request body from UpdateMemberOpts.
@@ -390,6 +441,21 @@ type BatchUpdateMemberOpts struct {
 	// The administrative state of the Pool. A valid value is true (UP)
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
+
+	// Is the member a backup? Backup members only receive traffic when all
+	// non-backup members are down.
+	// Requires microversion 2.1 or later.
+	Backup *bool `json:"backup,omitempty"`
+
+	// An alternate IP address used for health monitoring a backend member.
+	MonitorAddress *string `json:"monitor_address,omitempty"`
+
+	// An alternate protocol port used for health monitoring a backend member.
+	MonitorPort *int `json:"monitor_port,omitempty"`
+
+	// A list of simple strings assigned to the resource.
+	// Requires microversion 2.5 or later.
+	Tags []string `json:"tags,omitempty"`
 }
 
 // ToBatchMemberUpdateMap builds a request body from BatchUpdateMemberOpts.

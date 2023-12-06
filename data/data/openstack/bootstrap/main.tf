@@ -1,9 +1,46 @@
+locals {
+  description = "Created By OpenShift Installer"
+}
+
+provider "openstack" {
+  auth_url            = var.openstack_credentials_auth_url
+  cert                = var.openstack_credentials_cert
+  cloud               = var.openstack_credentials_cloud
+  domain_id           = var.openstack_credentials_domain_id
+  domain_name         = var.openstack_credentials_domain_name
+  endpoint_type       = var.openstack_credentials_endpoint_type
+  insecure            = var.openstack_credentials_insecure
+  key                 = var.openstack_credentials_key
+  password            = var.openstack_credentials_password
+  project_domain_id   = var.openstack_credentials_project_domain_id
+  project_domain_name = var.openstack_credentials_project_domain_name
+  region              = var.openstack_credentials_region
+  swauth              = var.openstack_credentials_swauth
+  tenant_id           = var.openstack_credentials_tenant_id
+  tenant_name         = var.openstack_credentials_tenant_name
+  token               = var.openstack_credentials_token
+  use_octavia         = var.openstack_credentials_use_octavia
+  user_domain_id      = var.openstack_credentials_user_domain_id
+  user_domain_name    = var.openstack_credentials_user_domain_name
+  user_id             = var.openstack_credentials_user_id
+  user_name           = var.openstack_credentials_user_name
+}
+
+data "openstack_images_image_v2" "base_image" {
+  name = var.openstack_base_image_name
+}
+
+data "openstack_compute_flavor_v2" "bootstrap_flavor" {
+  name = var.openstack_master_flavor_name
+}
+
 resource "openstack_networking_port_v2" "bootstrap_port" {
-  name = "${var.cluster_id}-bootstrap-port"
+  name        = "${var.cluster_id}-bootstrap-port"
+  description = local.description
 
   admin_state_up     = "true"
   network_id         = var.private_network_id
-  security_group_ids = [var.master_sg_id]
+  security_group_ids = var.master_sg_ids
   tags               = ["openshiftClusterID=${var.cluster_id}"]
 
   extra_dhcp_option {
@@ -11,40 +48,47 @@ resource "openstack_networking_port_v2" "bootstrap_port" {
     value = var.cluster_domain
   }
 
-  fixed_ip {
-    subnet_id = var.nodes_subnet_id
+  dynamic "fixed_ip" {
+    for_each = var.nodes_default_port.fixed_ips
+
+    content {
+      subnet_id  = fixed_ip.value["subnet_id"]
+      ip_address = fixed_ip.value["ip_address"]
+    }
   }
 
-  allowed_address_pairs {
-    ip_address = var.api_int_ip
+  dynamic "allowed_address_pairs" {
+    for_each = var.openstack_user_managed_load_balancer ? [] : var.openstack_api_int_ips
+    content {
+      ip_address = allowed_address_pairs.value
+    }
   }
 
   depends_on = [var.master_port_ids]
 }
 
-data "openstack_compute_flavor_v2" "bootstrap_flavor" {
-  name = var.flavor_name
-}
-
 resource "openstack_blockstorage_volume_v3" "bootstrap_volume" {
-  name  = "${var.cluster_id}-bootstrap"
-  count = var.root_volume_size == null ? 0 : 1
+  name        = "${var.cluster_id}-bootstrap"
+  count       = var.openstack_master_root_volume_size == null ? 0 : 1
+  description = local.description
 
-  size        = var.root_volume_size
-  volume_type = var.root_volume_type
-  image_id    = var.base_image_id
+  size        = var.openstack_master_root_volume_size
+  volume_type = var.openstack_master_root_volume_types[0]
+  image_id    = data.openstack_images_image_v2.base_image.id
+
+  availability_zone = var.openstack_master_root_volume_availability_zones[0]
 }
 
 resource "openstack_compute_instance_v2" "bootstrap" {
   name              = "${var.cluster_id}-bootstrap"
   flavor_id         = data.openstack_compute_flavor_v2.bootstrap_flavor.id
-  image_id          = var.root_volume_size == null ? var.base_image_id : null
-  availability_zone = var.zone
+  image_id          = var.openstack_master_root_volume_size == null ? data.openstack_images_image_v2.base_image.id : null
+  availability_zone = var.openstack_master_availability_zones[0]
 
-  user_data = var.bootstrap_shim_ignition
+  user_data = var.openstack_bootstrap_shim_ignition
 
-  dynamic block_device {
-    for_each = var.root_volume_size == null ? [] : [openstack_blockstorage_volume_v3.bootstrap_volume[0].id]
+  dynamic "block_device" {
+    for_each = var.openstack_master_root_volume_size == null ? [] : [openstack_blockstorage_volume_v3.bootstrap_volume[0].id]
     content {
       uuid                  = block_device.value
       source_type           = "volume"
@@ -58,8 +102,8 @@ resource "openstack_compute_instance_v2" "bootstrap" {
     port = openstack_networking_port_v2.bootstrap_port.id
   }
 
-  dynamic network {
-    for_each = var.additional_network_ids
+  dynamic "network" {
+    for_each = var.openstack_additional_network_ids
 
     content {
       uuid = network.value
@@ -75,9 +119,9 @@ resource "openstack_compute_instance_v2" "bootstrap" {
 }
 
 resource "openstack_networking_floatingip_v2" "bootstrap_fip" {
-  count       = var.external_network != "" ? 1 : 0
+  count       = var.openstack_external_network != "" ? 1 : 0
   description = "${var.cluster_id}-bootstrap-fip"
-  pool        = var.external_network
+  pool        = var.openstack_external_network
   port_id     = openstack_networking_port_v2.bootstrap_port.id
   tags        = ["openshiftClusterID=${var.cluster_id}"]
 

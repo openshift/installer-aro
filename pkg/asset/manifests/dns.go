@@ -6,31 +6,40 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 
 	configv1 "github.com/openshift/api/config/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	icaws "github.com/openshift/installer/pkg/asset/installconfig/aws"
 	icgcp "github.com/openshift/installer/pkg/asset/installconfig/gcp"
+	icibmcloud "github.com/openshift/installer/pkg/asset/installconfig/ibmcloud"
+	icpowervs "github.com/openshift/installer/pkg/asset/installconfig/powervs"
 	"github.com/openshift/installer/pkg/types"
+	alibabacloudtypes "github.com/openshift/installer/pkg/types/alibabacloud"
 	awstypes "github.com/openshift/installer/pkg/types/aws"
 	azuretypes "github.com/openshift/installer/pkg/types/azure"
 	baremetaltypes "github.com/openshift/installer/pkg/types/baremetal"
+	externaltypes "github.com/openshift/installer/pkg/types/external"
 	gcptypes "github.com/openshift/installer/pkg/types/gcp"
-	kubevirttypes "github.com/openshift/installer/pkg/types/kubevirt"
+	ibmcloudtypes "github.com/openshift/installer/pkg/types/ibmcloud"
 	libvirttypes "github.com/openshift/installer/pkg/types/libvirt"
 	nonetypes "github.com/openshift/installer/pkg/types/none"
+	nutanixtypes "github.com/openshift/installer/pkg/types/nutanix"
 	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
 	ovirttypes "github.com/openshift/installer/pkg/types/ovirt"
+	powervstypes "github.com/openshift/installer/pkg/types/powervs"
 	vspheretypes "github.com/openshift/installer/pkg/types/vsphere"
 )
 
 var (
 	dnsCfgFilename = filepath.Join(manifestDir, "cluster-dns-02-config.yml")
+
+	combineGCPZoneInfo = func(project, zoneName string) string {
+		return fmt.Sprintf("project/%s/managedZones/%s", project, zoneName)
+	}
 )
 
 // DNS generates the cluster-dns-*.yml files.
@@ -79,6 +88,18 @@ func (d *DNS) Generate(dependencies asset.Parents) error {
 	}
 
 	switch installConfig.Config.Platform.Name() {
+	case alibabacloudtypes.Name:
+		if installConfig.Config.Publish == types.ExternalPublishingStrategy {
+			config.Spec.PublicZone = &configv1.DNSZone{
+				ID:   installConfig.Config.BaseDomain,
+				Tags: map[string]string{"type": "public"},
+			}
+		}
+		// On Alibaba Cloud can be fetched using `ID` as a pre-determined private zone name
+		config.Spec.PrivateZone = &configv1.DNSZone{
+			ID:   installConfig.Config.ClusterDomain(),
+			Tags: map[string]string{"type": "private"},
+		}
 	case awstypes.Name:
 		if installConfig.Config.Publish == types.ExternalPublishingStrategy {
 			sess, err := installConfig.AWS.Session(context.TODO())
@@ -91,35 +112,110 @@ func (d *DNS) Generate(dependencies asset.Parents) error {
 			}
 			config.Spec.PublicZone = &configv1.DNSZone{ID: strings.TrimPrefix(*zone.Id, "/hostedzone/")}
 		}
-		config.Spec.PrivateZone = &configv1.DNSZone{Tags: map[string]string{
-			fmt.Sprintf("kubernetes.io/cluster/%s", clusterID.InfraID): "owned",
-			"Name": fmt.Sprintf("%s-int", clusterID.InfraID),
-		}}
+		if hostedZone := installConfig.Config.AWS.HostedZone; hostedZone == "" {
+			config.Spec.PrivateZone = &configv1.DNSZone{Tags: map[string]string{
+				fmt.Sprintf("kubernetes.io/cluster/%s", clusterID.InfraID): "owned",
+				"Name": fmt.Sprintf("%s-int", clusterID.InfraID),
+			}}
+		} else {
+			config.Spec.PrivateZone = &configv1.DNSZone{ID: hostedZone}
+
+			if r := installConfig.Config.AWS.HostedZoneRole; r != "" {
+				config.Spec.Platform = configv1.DNSPlatformSpec{
+					Type: configv1.AWSPlatformType,
+					AWS: &configv1.AWSDNSSpec{
+						PrivateZoneIAMRole: r,
+					},
+				}
+			}
+		}
 	case azuretypes.Name:
 		dnsConfig, err := installConfig.Azure.DNSConfig()
 		if err != nil {
 			return err
 		}
 
-		if installConfig.Config.Publish == types.ExternalPublishingStrategy {
+		if installConfig.Config.Publish == types.ExternalPublishingStrategy ||
+			(installConfig.Config.Publish == types.MixedPublishingStrategy && installConfig.Config.OperatorPublishingStrategy.Ingress != "Internal") {
 			//currently, this guesses the azure resource IDs from known parameter.
 			config.Spec.PublicZone = &configv1.DNSZone{
 				ID: dnsConfig.GetDNSZoneID(installConfig.Config.Azure.BaseDomainResourceGroupName, installConfig.Config.BaseDomain),
 			}
 		}
-		config.Spec.PrivateZone = &configv1.DNSZone{
-			ID: dnsConfig.GetPrivateDNSZoneID(installConfig.Config.Azure.ClusterResourceGroupName(clusterID.InfraID), installConfig.Config.ClusterDomain()),
+		if installConfig.Azure.CloudName != azuretypes.StackCloud {
+			config.Spec.PrivateZone = &configv1.DNSZone{
+				ID: dnsConfig.GetPrivateDNSZoneID(installConfig.Config.Azure.ClusterResourceGroupName(clusterID.InfraID), installConfig.Config.ClusterDomain()),
+			}
 		}
 	case gcptypes.Name:
-		if installConfig.Config.Publish == types.ExternalPublishingStrategy {
-			zone, err := icgcp.GetPublicZone(context.TODO(), installConfig.Config.Platform.GCP.ProjectID, installConfig.Config.BaseDomain)
+		client, err := icgcp.NewClient(context.Background())
+		if err != nil {
+			return err
+		}
+
+		// Set the public zone
+		switch {
+		case installConfig.Config.Publish != types.ExternalPublishingStrategy:
+			// Do not use a public zone when not publishing externally.
+		default:
+			// Search the project for a zone with the specified base domain.
+			zone, err := client.GetDNSZone(context.TODO(), installConfig.Config.GCP.ProjectID, installConfig.Config.BaseDomain, true)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get public zone for %q", installConfig.Config.BaseDomain)
 			}
 			config.Spec.PublicZone = &configv1.DNSZone{ID: zone.Name}
 		}
-		config.Spec.PrivateZone = &configv1.DNSZone{ID: fmt.Sprintf("%s-private-zone", clusterID.InfraID)}
-	case libvirttypes.Name, openstacktypes.Name, baremetaltypes.Name, nonetypes.Name, vspheretypes.Name, ovirttypes.Name, kubevirttypes.Name:
+
+		// Set the private zone
+		privateZoneID := fmt.Sprintf("%s-private-zone", clusterID.InfraID)
+		zone, err := client.GetDNSZone(context.TODO(), installConfig.Config.GCP.ProjectID, installConfig.Config.ClusterDomain(), false)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get private zone for %q", installConfig.Config.BaseDomain)
+		}
+		if zone != nil {
+			privateZoneID = zone.Name
+		}
+		config.Spec.PrivateZone = &configv1.DNSZone{ID: privateZoneID}
+
+	case ibmcloudtypes.Name:
+		client, err := icibmcloud.NewClient(installConfig.Config.Platform.IBMCloud.ServiceEndpoints)
+		if err != nil {
+			return errors.Wrap(err, "failed to get IBM Cloud client")
+		}
+
+		zoneID, err := client.GetDNSZoneIDByName(context.TODO(), installConfig.Config.BaseDomain, installConfig.Config.Publish)
+		if err != nil {
+			return errors.Wrap(err, "failed to get DNS zone ID")
+		}
+
+		if installConfig.Config.Publish == types.ExternalPublishingStrategy {
+			config.Spec.PublicZone = &configv1.DNSZone{
+				ID: zoneID,
+			}
+		}
+		config.Spec.PrivateZone = &configv1.DNSZone{
+			ID: zoneID,
+		}
+	case powervstypes.Name:
+		client, err := icpowervs.NewClient()
+		if err != nil {
+			return errors.Wrap(err, "failed to get IBM PowerVS client")
+		}
+
+		zoneID, err := client.GetDNSZoneIDByName(context.TODO(), installConfig.Config.BaseDomain, installConfig.Config.Publish)
+		if err != nil {
+			return errors.Wrap(err, "failed to get DNS zone ID")
+		}
+
+		if installConfig.Config.Publish == types.ExternalPublishingStrategy {
+			config.Spec.PublicZone = &configv1.DNSZone{
+				ID: zoneID,
+			}
+		}
+		config.Spec.PrivateZone = &configv1.DNSZone{
+			ID: zoneID,
+		}
+	case libvirttypes.Name, openstacktypes.Name, baremetaltypes.Name, externaltypes.Name, nonetypes.Name, vspheretypes.Name, ovirttypes.Name, nutanixtypes.Name:
 	default:
 		return errors.New("invalid Platform")
 	}

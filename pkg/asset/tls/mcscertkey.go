@@ -8,7 +8,7 @@ import (
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	baremetaltypes "github.com/openshift/installer/pkg/types/baremetal"
-	kubevirttypes "github.com/openshift/installer/pkg/types/kubevirt"
+	nutanixtypes "github.com/openshift/installer/pkg/types/nutanix"
 	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
 	ovirttypes "github.com/openshift/installer/pkg/types/ovirt"
 	vspheretypes "github.com/openshift/installer/pkg/types/vsphere"
@@ -45,27 +45,25 @@ func (a *MCSCertKey) Generate(dependencies asset.Parents) error {
 		Validity:     ValidityTenYears,
 	}
 
+	var vips []string
 	switch installConfig.Config.Platform.Name() {
 	case baremetaltypes.Name:
-		cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.BareMetal.APIVIP)}
-		cfg.DNSNames = []string{hostname, installConfig.Config.BareMetal.APIVIP}
+		vips = installConfig.Config.BareMetal.APIVIPs
+	case nutanixtypes.Name:
+		vips = installConfig.Config.Nutanix.APIVIPs
 	case openstacktypes.Name:
-		cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.OpenStack.APIVIP)}
-		cfg.DNSNames = []string{hostname, installConfig.Config.OpenStack.APIVIP}
+		vips = installConfig.Config.OpenStack.APIVIPs
 	case ovirttypes.Name:
-		cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.Ovirt.APIVIP)}
-		cfg.DNSNames = []string{hostname, installConfig.Config.Ovirt.APIVIP}
+		vips = installConfig.Config.Ovirt.APIVIPs
 	case vspheretypes.Name:
-		cfg.DNSNames = []string{hostname}
-		if installConfig.Config.VSphere.APIVIP != "" {
-			cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.VSphere.APIVIP)}
-			cfg.DNSNames = append(cfg.DNSNames, installConfig.Config.VSphere.APIVIP)
-		}
-	case kubevirttypes.Name:
-		cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.Kubevirt.APIVIP)}
-		cfg.DNSNames = []string{hostname, installConfig.Config.Kubevirt.APIVIP}
-	default:
-		cfg.DNSNames = []string{hostname}
+		vips = installConfig.Config.VSphere.APIVIPs
+	}
+
+	cfg.IPAddresses = []net.IP{}
+	cfg.DNSNames = []string{hostname}
+	for _, vip := range vips {
+		cfg.IPAddresses = append(cfg.IPAddresses, net.ParseIP(vip))
+		cfg.DNSNames = append(cfg.DNSNames, vip)
 	}
 
 	return a.SignedCertKey.Generate(cfg, ca, "machine-config-server", DoNotAppendParent)

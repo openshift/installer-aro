@@ -1,13 +1,17 @@
 package gcp
 
+import "github.com/openshift/installer/pkg/types/gcp"
+
 // cloudResource hold various fields for any given cloud resource
 type cloudResource struct {
 	key      string
 	name     string
+	project  string
 	status   string
 	typeName string
 	url      string
 	zone     string
+	quota    []gcp.QuotaUsage
 }
 
 type cloudResources map[string]cloudResource

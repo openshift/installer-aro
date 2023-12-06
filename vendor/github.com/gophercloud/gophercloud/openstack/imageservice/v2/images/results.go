@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/internal"
 	"github.com/gophercloud/gophercloud/pagination"
 )
 
@@ -53,6 +52,9 @@ type Image struct {
 
 	// Visibility defines who can see/use the image.
 	Visibility ImageVisibility `json:"visibility"`
+
+	// Hidden is whether the image is listed in default image list or not.
+	Hidden bool `json:"os_hidden"`
 
 	// Checksum is the checksum of the data that's associated with the image.
 	Checksum string `json:"checksum"`
@@ -132,7 +134,7 @@ func (r *Image) UnmarshalJSON(b []byte) error {
 		delete(resultMap, "size")
 		delete(resultMap, "openstack-image-import-methods")
 		delete(resultMap, "openstack-image-store-ids")
-		r.Properties = internal.RemainingKeys(Image{}, resultMap)
+		r.Properties = gophercloud.RemainingKeys(Image{}, resultMap)
 	}
 
 	if v := strings.FieldsFunc(strings.TrimSpace(s.OpenStackImageImportMethods), splitFunc); len(v) > 0 {
@@ -202,6 +204,10 @@ type ImagePage struct {
 
 // IsEmpty returns true if an ImagePage contains no Images results.
 func (r ImagePage) IsEmpty() (bool, error) {
+	if r.StatusCode == 204 {
+		return true, nil
+	}
+
 	images, err := ExtractImages(r)
 	return len(images) == 0, err
 }

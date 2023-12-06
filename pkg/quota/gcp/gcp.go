@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	monitoring "cloud.google.com/go/monitoring/apiv3"
+	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
 	"github.com/pkg/errors"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -91,7 +91,7 @@ func newQuotas(usages []record, limits []record) []quota.Quota {
 		return record{}, false
 	}
 
-	var quotas []quota.Quota
+	quotas := make([]quota.Quota, 0, len(limits))
 	for _, l := range limits {
 		q := quota.Quota{
 			Service: l.Service,
@@ -118,7 +118,7 @@ func IsUnauthorized(err error) bool {
 	}
 	var gErr *googleapi.Error
 	if errors.As(err, &gErr) {
-		return gErr.Code == http.StatusUnauthorized
+		return gErr.Code == http.StatusUnauthorized || gErr.Code == http.StatusForbidden
 	}
 
 	if grpcCode := status.Code(errors.Cause(err)); grpcCode != codes.OK {

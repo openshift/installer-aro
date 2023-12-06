@@ -61,7 +61,7 @@ For 3 masters/3 workers, the target Cluster **must have at least**:
 - 96RAM
 - 24vCPUs
 - 720GiB storage
-- 50IOPS for the Master VM disks, [per ETCD requirement doc](https://github.com/etcd-io/etcd/blob/master/Documentation/op-guide/hardware.md)
+- Storage that is fast enough for etcd, [using-fio-to-tell-whether-your-storage-is-fast-enough-for-etcd](https://www.ibm.com/cloud/blog/using-fio-to-tell-whether-your-storage-is-fast-enough-for-etcd)
 
 > Worker count can be reduced to 2 in `install-config.yaml` in case needed.
 
@@ -102,6 +102,8 @@ Below the description of all config options in ovirt-config.yaml.
 | ovirt_password | Password for the user provided | string   | superpass                                                                                              |
 | ovirt_insecure | TLS verification disabled      | boolean  | false                                                                                                  |
 | ovirt_ca_bundle| CA Bundle                      | string   | -----BEGIN CERTIFICATE----- MIIDvTCCAqWgAwIBAgICEAA.... ----- END CERTIFICATE -----                    |
+| ovirt_cafile   | path to a file containing the  | string   | /path/to/ca.pm                                                                                         |
+|                | engine cert                    |          |                                                                                                        |
 | ovirt_pem_url  | PEM URL                        | string   | https://engine.fqdn.home/ovirt-engine/services/pki-resource?resource=ca-certificate&format=X509-PEM-CA |
 
 ### ovirt-credentials
@@ -187,7 +189,8 @@ INFO Destroying the bootstrap resources...
 INFO Waiting up to 30m0s for the cluster at https://api.test.example.org:6443 to initialize...
 INFO Waiting up to 10m0s for the openshift-console route to be created...
 INFO Install complete!
-INFO To access the cluster as the system:admin user when using 'oc', run 'export KUBECONFIG=/home/user/install_dir/auth/kubeconfig'
+INFO To access the cluster as the system:admin user when using 'oc', run
+    export KUBECONFIG=/home/user/install_dir/auth/kubeconfig
 INFO Access the OpenShift web-console here: https://console-openshift-console.apps.test.example.org
 INFO Login to the console with user: kubeadmin, password: xxxxxxxxx
 ```

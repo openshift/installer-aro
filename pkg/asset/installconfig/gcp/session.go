@@ -3,21 +3,20 @@ package gcp
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	googleoauth "golang.org/x/oauth2/google"
 	compute "google.golang.org/api/compute/v1"
-	"gopkg.in/AlecAivazis/survey.v1"
 )
 
 var (
-	authEnvs            = []string{"GOOGLE_CREDENTIALS", "GOOGLE_CLOUD_KEYFILE_JSON", "GCLOUD_KEYFILE_JSON"}
+	authEnvs            = []string{"GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CREDENTIALS", "GOOGLE_CLOUD_KEYFILE_JSON", "GCLOUD_KEYFILE_JSON"}
 	defaultAuthFilePath = filepath.Join(os.Getenv("HOME"), ".gcp", "osServiceAccount.json")
 	credLoaders         = []credLoader{}
 	onceLoggers         = map[credLoader]*sync.Once{}
@@ -83,7 +82,7 @@ func getCredentials(ctx context.Context) (*googleoauth.Credentials, error) {
 	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
 		return nil, err
 	}
-	if err := ioutil.WriteFile(filePath, creds.JSON, 0600); err != nil {
+	if err := os.WriteFile(filePath, creds.JSON, 0o600); err != nil {
 		return nil, err
 	}
 	return creds, nil
@@ -144,7 +143,7 @@ type fileLoader struct {
 }
 
 func (f *fileLoader) Load(ctx context.Context) (*googleoauth.Credentials, error) {
-	content, err := ioutil.ReadFile(f.path)
+	content, err := os.ReadFile(f.path)
 	if err != nil {
 		return nil, err
 	}

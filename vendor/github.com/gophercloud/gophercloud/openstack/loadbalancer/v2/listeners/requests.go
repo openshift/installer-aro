@@ -2,6 +2,8 @@ package listeners
 
 import (
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/l7policies"
+	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
 	"github.com/gophercloud/gophercloud/pagination"
 )
 
@@ -10,12 +12,27 @@ type Protocol string
 
 // Supported attributes for create/update operations.
 const (
-	ProtocolTCP             Protocol = "TCP"
-	ProtocolUDP             Protocol = "UDP"
-	ProtocolPROXY           Protocol = "PROXY"
-	ProtocolHTTP            Protocol = "HTTP"
-	ProtocolHTTPS           Protocol = "HTTPS"
+	ProtocolTCP   Protocol = "TCP"
+	ProtocolUDP   Protocol = "UDP"
+	ProtocolPROXY Protocol = "PROXY"
+	ProtocolHTTP  Protocol = "HTTP"
+	ProtocolHTTPS Protocol = "HTTPS"
+	// Protocol SCTP requires octavia microversion 2.23
+	ProtocolSCTP Protocol = "SCTP"
+	// Protocol Prometheus requires octavia microversion 2.25
+	ProtocolPrometheus      Protocol = "PROMETHEUS"
 	ProtocolTerminatedHTTPS Protocol = "TERMINATED_HTTPS"
+)
+
+// Type TLSVersion represents a tls version
+type TLSVersion string
+
+const (
+	TLSVersionSSLv3   TLSVersion = "SSLv3"
+	TLSVersionTLSv1   TLSVersion = "TLSv1"
+	TLSVersionTLSv1_1 TLSVersion = "TLSv1.1"
+	TLSVersionTLSv1_2 TLSVersion = "TLSv1.2"
+	TLSVersionTLSv1_3 TLSVersion = "TLSv1.3"
 )
 
 // ListOptsBuilder allows extensions to add additional parameters to the
@@ -84,9 +101,9 @@ type CreateOptsBuilder interface {
 // CreateOpts represents options for creating a listener.
 type CreateOpts struct {
 	// The load balancer on which to provision this listener.
-	LoadbalancerID string `json:"loadbalancer_id" required:"true"`
+	LoadbalancerID string `json:"loadbalancer_id,omitempty"`
 
-	// The protocol - can either be TCP, HTTP, HTTPS or TERMINATED_HTTPS.
+	// The protocol - can either be TCP, SCTP, HTTP, HTTPS or TERMINATED_HTTPS.
 	Protocol Protocol `json:"protocol" required:"true"`
 
 	// The port on which to listen for client traffic.
@@ -101,6 +118,13 @@ type CreateOpts struct {
 
 	// The ID of the default pool with which the Listener is associated.
 	DefaultPoolID string `json:"default_pool_id,omitempty"`
+
+	// DefaultPool an instance of pools.CreateOpts which allows a
+	// (default) pool to be created at the same time the listener is created.
+	//
+	// This is only possible to use when creating a fully populated
+	// load balancer.
+	DefaultPool *pools.CreateOpts `json:"default_pool,omitempty"`
 
 	// Human-readable description for the Listener.
 	Description string `json:"description,omitempty"`
@@ -117,6 +141,13 @@ type CreateOpts struct {
 	// The administrative state of the Listener. A valid value is true (UP)
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
+
+	// L7Policies is a slice of l7policies.CreateOpts which allows a set
+	// of policies to be created at the same time the listener is created.
+	//
+	// This is only possible to use when creating a fully populated
+	// Loadbalancer.
+	L7Policies []l7policies.CreateOpts `json:"l7policies,omitempty"`
 
 	// Frontend client inactivity timeout in milliseconds
 	TimeoutClientData *int `json:"timeout_client_data,omitempty"`
@@ -135,6 +166,12 @@ type CreateOpts struct {
 
 	// A list of IPv4, IPv6 or mix of both CIDRs
 	AllowedCIDRs []string `json:"allowed_cidrs,omitempty"`
+
+	// A list of TLS protocol versions. Available from microversion 2.17
+	TLSVersions []TLSVersion `json:"tls_versions,omitempty"`
+
+	// Tags is a set of resource tags. New in version 2.5
+	Tags []string `json:"tags,omitempty"`
 }
 
 // ToListenerCreateMap builds a request body from CreateOpts.
@@ -214,6 +251,12 @@ type UpdateOpts struct {
 
 	// A list of IPv4, IPv6 or mix of both CIDRs
 	AllowedCIDRs *[]string `json:"allowed_cidrs,omitempty"`
+
+	// A list of TLS protocol versions. Available from microversion 2.17
+	TLSVersions *[]TLSVersion `json:"tls_versions,omitempty"`
+
+	// Tags is a set of resource tags. New in version 2.5
+	Tags *[]string `json:"tags,omitempty"`
 }
 
 // ToListenerUpdateMap builds a request body from UpdateOpts.

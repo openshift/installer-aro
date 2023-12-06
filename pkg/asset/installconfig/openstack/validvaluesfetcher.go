@@ -1,7 +1,7 @@
 package openstack
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
 
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/external"
@@ -9,6 +9,8 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	networkutils "github.com/gophercloud/utils/openstack/networking/v2/networks"
+
+	openstackdefaults "github.com/openshift/installer/pkg/types/openstack/defaults"
 )
 
 // getCloudNames gets the valid cloud names. These are read from clouds.yaml.
@@ -28,9 +30,7 @@ func getCloudNames() ([]string, error) {
 // getExternalNetworkNames interrogates OpenStack to get the external network
 // names.
 func getExternalNetworkNames(cloud string) ([]string, error) {
-	conn, err := clientconfig.NewServiceClient("network", &clientconfig.ClientOpts{
-		Cloud: cloud,
-	})
+	conn, err := openstackdefaults.NewServiceClient("network", openstackdefaults.DefaultClientOpts(cloud))
 	if err != nil {
 		return nil, err
 	}
@@ -61,9 +61,7 @@ func getExternalNetworkNames(cloud string) ([]string, error) {
 
 // getFlavorNames gets a list of valid flavor names.
 func getFlavorNames(cloud string) ([]string, error) {
-	conn, err := clientconfig.NewServiceClient("compute", &clientconfig.ClientOpts{
-		Cloud: cloud,
-	})
+	conn, err := openstackdefaults.NewServiceClient("compute", openstackdefaults.DefaultClientOpts(cloud))
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +78,7 @@ func getFlavorNames(cloud string) ([]string, error) {
 	}
 
 	if len(allFlavors) == 0 {
-		return nil, errors.New("no OpenStack flavors were found")
+		return nil, fmt.Errorf("no OpenStack flavors were found")
 	}
 
 	flavorNames := make([]string, len(allFlavors))
@@ -90,10 +88,40 @@ func getFlavorNames(cloud string) ([]string, error) {
 
 	return flavorNames, nil
 }
-func getFloatingIPNames(cloud string, floatingNetworkName string) ([]string, error) {
-	conn, err := clientconfig.NewServiceClient("network", &clientconfig.ClientOpts{
-		Cloud: cloud,
-	})
+
+type sortableFloatingIPCollection []floatingips.FloatingIP
+
+func (fips sortableFloatingIPCollection) Len() int { return len(fips) }
+func (fips sortableFloatingIPCollection) Less(i, j int) bool {
+	return fips[i].FloatingIP < fips[j].FloatingIP
+}
+func (fips sortableFloatingIPCollection) Swap(i, j int) {
+	fips[i], fips[j] = fips[j], fips[i]
+}
+
+func (fips sortableFloatingIPCollection) Names() []string {
+	names := make([]string, len(fips))
+	for i := range fips {
+		names[i] = fips[i].FloatingIP
+	}
+	return names
+}
+
+func (fips sortableFloatingIPCollection) Description(index int) string {
+	return fips[index].Description
+}
+
+func (fips sortableFloatingIPCollection) Contains(value string) bool {
+	for i := range fips {
+		if value == fips[i].FloatingIP {
+			return true
+		}
+	}
+	return false
+}
+
+func getFloatingIPs(cloud string, floatingNetworkName string) (sortableFloatingIPCollection, error) {
+	conn, err := openstackdefaults.NewServiceClient("network", openstackdefaults.DefaultClientOpts(cloud))
 	if err != nil {
 		return nil, err
 	}
@@ -121,13 +149,8 @@ func getFloatingIPNames(cloud string, floatingNetworkName string) ([]string, err
 	}
 
 	if len(allFloatingIPs) == 0 {
-		return nil, errors.New("there are no unassigned floating IP addresses available")
+		return nil, fmt.Errorf("there are no unassigned floating IP addresses available")
 	}
 
-	floatingIPNames := make([]string, len(allFloatingIPs))
-	for i, floatingIP := range allFloatingIPs {
-		floatingIPNames[i] = floatingIP.FloatingIP
-	}
-
-	return floatingIPNames, nil
+	return allFloatingIPs, nil
 }

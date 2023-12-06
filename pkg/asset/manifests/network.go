@@ -4,30 +4,25 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
-	"github.com/openshift/installer/pkg/asset/templates/content/openshift"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/openshift/installer/pkg/types"
+	"github.com/openshift/installer/pkg/types/aws"
+	"github.com/openshift/installer/pkg/types/powervs"
 )
 
 var (
-	noCrdFilename = filepath.Join(manifestDir, "cluster-network-01-crd.yml")
-	noCfgFilename = filepath.Join(manifestDir, "cluster-network-02-config.yml")
+	noCfgFilename  = filepath.Join(manifestDir, "cluster-network-02-config.yml")
+	cnoCfgFilename = filepath.Join(manifestDir, "cluster-network-03-config.yml")
+	// Cluster Network MTU for AWS Local Zone deployments on edge machine pools.
+	ovnKubernetesNetworkMtuEdge uint32 = 1200
 )
-
-// We need to manually create our CRDs first, so we can create the
-// configuration instance of it in the installer. Other operators have
-// their CRD created by the CVO, but we need to create the corresponding
-// CRs in the installer, so we need the CRD to be there.
-// The first CRD is the high-level Network.config.openshift.io object,
-// which is stable and minimal. Administrators can configure the
-// network in a more detailed manner with the operator-specific CR, which
-// also needs to be done before the installer is run, so we provide both.
 
 // Networking generates the cluster-network-*.yml files.
 type Networking struct {
@@ -47,15 +42,13 @@ func (no *Networking) Name() string {
 func (no *Networking) Dependencies() []asset.Asset {
 	return []asset.Asset{
 		&installconfig.InstallConfig{},
-		&openshift.NetworkCRDs{},
 	}
 }
 
-// Generate generates the network operator config and its CRD.
+// Generate generates the network operator config.
 func (no *Networking) Generate(dependencies asset.Parents) error {
 	installConfig := &installconfig.InstallConfig{}
-	crds := &openshift.NetworkCRDs{}
-	dependencies.Get(installConfig, crds)
+	dependencies.Get(installConfig)
 
 	netConfig := installConfig.Config.Networking
 
@@ -101,20 +94,41 @@ func (no *Networking) Generate(dependencies asset.Parents) error {
 		return errors.Wrapf(err, "failed to create %s manifests from InstallConfig", no.Name())
 	}
 
-	crdContents := ""
-	for _, crdFile := range crds.Files() {
-		crdContents = fmt.Sprintf("%s\n---\n%s", crdContents, crdFile.Data)
-	}
-
 	no.FileList = []*asset.File{
-		{
-			Filename: noCrdFilename,
-			Data:     []byte(crdContents),
-		},
 		{
 			Filename: noCfgFilename,
 			Data:     configData,
 		},
+	}
+
+	switch installConfig.Config.Platform.Name() {
+	case aws.Name:
+		defaultNetworkConfig, err := no.GenerateCustomNetworkConfigMTU(installConfig)
+		if err != nil {
+			return err
+		}
+		if defaultNetworkConfig != nil {
+			cnoConfig, err := no.generateCustomCnoConfig(defaultNetworkConfig)
+			if err != nil {
+				return fmt.Errorf("cannot generate DefaultNetworkConfig for %s: %w", netConfig.NetworkType, err)
+			}
+			no.FileList = append(no.FileList, &asset.File{
+				Filename: cnoCfgFilename,
+				Data:     cnoConfig,
+			})
+		}
+
+	case powervs.Name:
+		if netConfig.NetworkType == "OVNKubernetes" {
+			ovnConfig, err := OvnKubeConfig(clusterNet, serviceNet, true)
+			if err != nil {
+				return errors.Wrapf(err, "cannot marshal Power VS OVNKube Config")
+			}
+			no.FileList = append(no.FileList, &asset.File{
+				Filename: cnoCfgFilename,
+				Data:     ovnConfig,
+			})
+		}
 	}
 
 	return nil
@@ -128,4 +142,83 @@ func (no *Networking) Files() []*asset.File {
 // Load returns false since this asset is not written to disk by the installer.
 func (no *Networking) Load(f asset.FileFetcher) (bool, error) {
 	return false, nil
+}
+
+// generateCustomCnoConfig generates the defaultNetwork for Cluster Network Operator
+// configuration, and returns the byte data with Cluster Network Operator manifest.
+func (no *Networking) generateCustomCnoConfig(defaultNetwork *operatorv1.DefaultNetworkDefinition) ([]byte, error) {
+	if defaultNetwork == nil {
+		return nil, errors.New("defaultNetwork must be specified")
+	}
+	dnConfig := operatorv1.Network{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: operatorv1.SchemeGroupVersion.String(),
+			Kind:       "Network",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+		Spec: operatorv1.NetworkSpec{
+			OperatorSpec:   operatorv1.OperatorSpec{ManagementState: operatorv1.Managed},
+			DefaultNetwork: *defaultNetwork,
+		},
+	}
+
+	return yaml.Marshal(dnConfig)
+}
+
+// GenerateCustomNetworkConfigMTU generates and return the DefaultNetwork configuration, when there are
+// customizations in the install-config.yaml.
+func (no *Networking) GenerateCustomNetworkConfigMTU(ic *installconfig.InstallConfig) (*operatorv1.DefaultNetworkDefinition, error) {
+	if ic.Config == nil {
+		return nil, nil
+	}
+	if ic.Config.Networking == nil {
+		return nil, nil
+	}
+
+	var defNetCfg *operatorv1.DefaultNetworkDefinition
+	mtu := uint32(0)
+	hasCustomMTU := false
+	hasEdgePool := false
+	netConfig := ic.Config.Networking
+
+	if ic.Config.Platform.Name() == aws.Name {
+		for _, mp := range ic.Config.Compute {
+			// Check if there is an edge compute pool in install config, and generate the
+			// CNO object to set DefaultNetwork for CNI with custom MTU.
+			// EC2 Instances running on AWS Local and Wavelength zones generally
+			// requires (newer zones are supporting higger) MTU set to 1300 to
+			// communicate with regular zones in the Region.
+			// The number of MTU must be decreased from the network plugin overhead.
+			// https://docs.aws.amazon.com/local-zones/latest/ug/how-local-zones-work.html
+			if mp.Name == types.MachinePoolEdgeRoleName {
+				hasCustomMTU = true
+				hasEdgePool = true
+			}
+		}
+		if ic.Config.Networking != nil && ic.Config.Networking.ClusterNetworkMTU > 0 {
+			hasCustomMTU = true
+			mtu = ic.Config.Networking.ClusterNetworkMTU
+		}
+	}
+
+	if !hasCustomMTU {
+		return nil, nil
+	}
+
+	if netConfig.NetworkType == string(operatorv1.NetworkTypeOVNKubernetes) {
+		// User-defined Cluster MTU has precedence over standard edge zone for each plugin.
+		if hasEdgePool && mtu == 0 {
+			mtu = ovnKubernetesNetworkMtuEdge
+		}
+		defNetCfg = &operatorv1.DefaultNetworkDefinition{
+			Type: operatorv1.NetworkTypeOVNKubernetes,
+			OVNKubernetesConfig: &operatorv1.OVNKubernetesConfig{
+				MTU: &mtu,
+			},
+		}
+	}
+
+	return defNetCfg, nil
 }

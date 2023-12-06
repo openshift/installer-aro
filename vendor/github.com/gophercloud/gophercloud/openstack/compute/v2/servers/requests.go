@@ -29,6 +29,14 @@ type ListOpts struct {
 	// Flavor is the name of the flavor in URL format.
 	Flavor string `q:"flavor"`
 
+	// IP is a regular expression to match the IPv4 address of the server.
+	IP string `q:"ip"`
+
+	// This requires the client to be set to microversion 2.5 or later, unless
+	// the user is an admin.
+	// IP is a regular expression to match the IPv6 address of the server.
+	IP6 string `q:"ip6"`
+
 	// Name of the server as a string; can be queried with regular expressions.
 	// Realize that ?name=bob returns both bob and bobb. If you need to match bob
 	// only, you can use a regular expression matching the syntax of the
@@ -55,6 +63,11 @@ type ListOpts struct {
 	// Setting "AllTenants = true" is required.
 	TenantID string `q:"tenant_id"`
 
+	// This requires the client to be set to microversion 2.83 or later, unless
+	// the user is an admin.
+	// UserID lists servers for a particular user.
+	UserID string `q:"user_id"`
+
 	// This requires the client to be set to microversion 2.26 or later.
 	// Tags filters on specific server tags. All tags must be present for the server.
 	Tags string `q:"tags"`
@@ -70,6 +83,9 @@ type ListOpts struct {
 	// This requires the client to be set to microversion 2.26 or later.
 	// NotTagsAny filters on specific server tags. At least one of the tags must be absent for the server.
 	NotTagsAny string `q:"not-tags-any"`
+
+	// Display servers based on their availability zone (Admin only until microversion 2.82).
+	AvailabilityZone string `q:"availability_zone"`
 }
 
 // ToServerListQuery formats a ListOpts into a query string.
@@ -78,7 +94,22 @@ func (opts ListOpts) ToServerListQuery() (string, error) {
 	return q.String(), err
 }
 
-// List makes a request against the API to list servers accessible to you.
+// ListSimple makes a request against the API to list servers accessible to you.
+func ListSimple(client *gophercloud.ServiceClient, opts ListOptsBuilder) pagination.Pager {
+	url := listURL(client)
+	if opts != nil {
+		query, err := opts.ToServerListQuery()
+		if err != nil {
+			return pagination.Pager{Err: err}
+		}
+		url += query
+	}
+	return pagination.NewPager(client, url, func(r pagination.PageResult) pagination.Page {
+		return ServerPage{pagination.LinkedPageBase{PageResult: r}}
+	})
+}
+
+// List makes a request against the API to list servers details accessible to you.
 func List(client *gophercloud.ServiceClient, opts ListOptsBuilder) pagination.Pager {
 	url := listDetailURL(client)
 	if opts != nil {
@@ -112,6 +143,13 @@ type Network struct {
 
 	// FixedIP specifies a fixed IPv4 address to be used on this network.
 	FixedIP string
+
+	// Tag may contain an optional device role tag for the server's virtual
+	// network interface. This can be used to identify network interfaces when
+	// multiple networks are connected to one server.
+	//
+	// Requires microversion 2.32 through 2.36 or 2.42 or later.
+	Tag string
 }
 
 // Personality is an array of files that are injected into the server at launch.
@@ -244,6 +282,9 @@ func (opts CreateOpts) ToServerCreateMap() (map[string]interface{}, error) {
 				}
 				if net.FixedIP != "" {
 					networks[i]["fixed_ip"] = net.FixedIP
+				}
+				if net.Tag != "" {
+					networks[i]["tag"] = net.Tag
 				}
 			}
 			b["networks"] = networks
@@ -386,19 +427,19 @@ func (opts RebootOpts) ToServerRebootMap() (map[string]interface{}, error) {
 }
 
 /*
-	Reboot requests that a given server reboot.
+Reboot requests that a given server reboot.
 
-	Two methods exist for rebooting a server:
+Two methods exist for rebooting a server:
 
-	HardReboot (aka PowerCycle) starts the server instance by physically cutting
-	power to the machine, or if a VM, terminating it at the hypervisor level.
-	It's done. Caput. Full stop.
-	Then, after a brief while, power is restored or the VM instance restarted.
+HardReboot (aka PowerCycle) starts the server instance by physically cutting
+power to the machine, or if a VM, terminating it at the hypervisor level.
+It's done. Caput. Full stop.
+Then, after a brief while, power is restored or the VM instance restarted.
 
-	SoftReboot (aka OSReboot) simply tells the OS to restart under its own
-	procedure.
-	E.g., in Linux, asking it to enter runlevel 6, or executing
-	"sudo shutdown -r now", or by asking Windows to rtart the machine.
+SoftReboot (aka OSReboot) simply tells the OS to restart under its own
+procedure.
+E.g., in Linux, asking it to enter runlevel 6, or executing
+"sudo shutdown -r now", or by asking Windows to rtart the machine.
 */
 func Reboot(client *gophercloud.ServiceClient, id string, opts RebootOptsBuilder) (r ActionResult) {
 	b, err := opts.ToServerRebootMap()

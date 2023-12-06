@@ -2,62 +2,92 @@
 # It builds an image containing binaries like jq, terraform, awscli, oc, etc. to allow bringing up UPI infrastructure.
 # It also contains the `upi` directory that contains various terraform and cloud formation templates that are used to create infrastructure resources.
 
-
-FROM registry.svc.ci.openshift.org/ocp/builder:golang-1.14 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.14 AS builder
+ARG TAGS=""
 WORKDIR /go/src/github.com/openshift/installer
 COPY . .
-RUN hack/build.sh
+RUN DEFAULT_ARCH="$(go env GOHOSTARCH)" hack/build.sh
 
-FROM registry.svc.ci.openshift.org/ocp/4.6:cli as cli
+FROM registry.ci.openshift.org/ocp/4.15:cli as cli
+FROM quay.io/ocp-splat/govc:v0.30.7 as govc
+FROM quay.io/multi-arch/yq:3.3.0 as yq3
+FROM quay.io/multi-arch/yq:4.30.5 as yq4
 
-FROM registry.svc.ci.openshift.org/ocp/4.1:base
+FROM registry.ci.openshift.org/ocp/4.15:base
 COPY --from=cli /usr/bin/oc /bin/oc
 COPY --from=builder /go/src/github.com/openshift/installer/bin/openshift-install /bin/openshift-install
 COPY --from=builder /go/src/github.com/openshift/installer/upi /var/lib/openshift-install/upi
-COPY --from=builder /go/src/github.com/openshift/installer/data/data/rhcos.json /var/lib/openshift-install/rhcos.json
 
-RUN rpm --import https://packages.microsoft.com/keys/microsoft.asc
-RUN sh -c 'echo -e "[azure-cli]\nname=Azure CLI\nbaseurl=https://packages.microsoft.com/yumrepos/azure-cli\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" >/etc/yum.repos.d/azure-cli.repo'
+COPY --from=govc /govc /bin/govc
 
-RUN sh -c 'echo -e "[google-cloud-sdk]\nname=Google Cloud SDK\nbaseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el7-x86_64\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg\n       https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg" > /etc/yum.repos.d/google-cloud-sdk.repo'
+RUN rpm --import https://packages.microsoft.com/keys/microsoft.asc && \
+    sh -c 'echo -e "[packages-microsoft-com-prod]\nname=packages-microsoft-com-prod\nbaseurl=https://packages.microsoft.com/rhel/8/prod\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" >/etc/yum.repos.d/microsoft-prod.repo' && \
+    sh -c 'echo -e "[google-cloud-cli]\nname=Google Cloud CLI\nbaseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el8-x86_64\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg\n       https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg" > /etc/yum.repos.d/google-cloud-sdk.repo'
 
 RUN yum update -y && \
     yum install --setopt=tsflags=nodocs -y \
-      azure-cli \
+      azure-cli-2.49.0-1.el8 \
       gettext \
-      google-cloud-sdk \
+      google-cloud-cli-447.0.0-1 \
       gzip \
       jq \
       unzip \
       openssh-clients \
       openssl \
-      pyOpenSSL \
-      PyYAML \
-      util-linux && \
+      python3-pyOpenSSL \
+      python2-pyyaml \
+      python3-pyyaml \
+      bind-utils \
+      util-linux \
+      xz && \
     yum clean all && \
     rm -rf /var/cache/yum/* && \
     chmod g+w /etc/passwd
 
-ENV TERRAFORM_VERSION=0.12.24
+COPY --from=yq3 /yq /bin/yq-go
+COPY --from=yq4 /usr/bin/yq /bin/yq-v4
+
+ARG ALIYUN_URI=https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+RUN curl -sSL "${ALIYUN_URI}" --output /tmp/aliyun-cli-linux-latest-amd64.tgz && \
+  tar --directory=/bin/ -xvf /tmp/aliyun-cli-linux-latest-amd64.tgz && \
+  rm -f /tmp/aliyun-cli-linux-latest-amd64.tgz
+
+# Not packaged, but required by gcloud. See https://cloud.google.com/sdk/crypto
+RUN pip-3 install cryptography
+
+ENV CLOUDSDK_PYTHON=/usr/bin/python
+ENV CLOUDSDK_PYTHON_SITEPACKAGES=1
+
+ENV TERRAFORM_VERSION=1.0.11
 RUN curl -O https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
     unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip -d /bin/
-ENV MATCHBOX_PROVIDER_VERSION=v0.3.0
-RUN curl -L -O https://github.com/poseidon/terraform-provider-matchbox/releases/download/${MATCHBOX_PROVIDER_VERSION}/terraform-provider-matchbox-${MATCHBOX_PROVIDER_VERSION}-linux-amd64.tar.gz && \
-    tar xzf terraform-provider-matchbox-${MATCHBOX_PROVIDER_VERSION}-linux-amd64.tar.gz && \
-    mv terraform-provider-matchbox-${MATCHBOX_PROVIDER_VERSION}-linux-amd64/terraform-provider-matchbox /bin/terraform-provider-matchbox
+ENV MATCHBOX_PROVIDER_VERSION=0.5.0
+RUN curl -L -O https://github.com/poseidon/terraform-provider-matchbox/releases/download/v${MATCHBOX_PROVIDER_VERSION}/terraform-provider-matchbox_${MATCHBOX_PROVIDER_VERSION}_linux_amd64.zip && \
+    unzip terraform-provider-matchbox_${MATCHBOX_PROVIDER_VERSION}_linux_amd64.zip -d /bin/ && \
+    mv /bin/terraform-provider-matchbox_v${MATCHBOX_PROVIDER_VERSION} /bin/terraform-provider-matchbox
 ENV IGNITION_PROVIDER_VERSION=v2.1.0
 RUN curl -L -O https://github.com/community-terraform-providers/terraform-provider-ignition/releases/download/${IGNITION_PROVIDER_VERSION}/terraform-provider-ignition-${IGNITION_PROVIDER_VERSION}-linux-amd64.tar.gz && \
     tar xzf terraform-provider-ignition-${IGNITION_PROVIDER_VERSION}-linux-amd64.tar.gz && \
     mv terraform-provider-ignition-${IGNITION_PROVIDER_VERSION}-linux-amd64/terraform-provider-ignition /bin/terraform-provider-ignition
-RUN curl -L -O https://github.com/vmware/govmomi/releases/download/v0.20.0/govc_linux_amd64.gz && \
-    gzip -d govc_linux_amd64.gz && \
-    chmod +x govc_linux_amd64 && mv govc_linux_amd64 /bin/govc
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install -b /bin && \
     rm -rf ./aws awscliv2.zip
 
-RUN mkdir /output && chown 1000:1000 /output
+# Download the latest IBM Cloud release binary
+ARG IBMCLI_URI=https://clis.cloud.ibm.com/install/linux
+RUN mkdir /output && HOME=/output && \ 
+    echo "-4" > $HOME/.curlrc && \
+    curl -fsSL ${IBMCLI_URI} | sh && \    
+    ibmcloud plugin install vpc-infrastructure -f && \
+    ibmcloud plugin install cloud-dns-services -f && \
+    ibmcloud plugin install cloud-internet-services -f && \
+    cp /usr/local/bin/ibmcloud /bin/ibmcloud && \
+    rm -f $HOME/.curlrc && \
+    ibmcloud version && \
+    ibmcloud plugin list
+
+RUN chown 1000:1000 /output && chmod -R g=u "/output/.bluemix/"
 USER 1000:1000
 ENV PATH /bin
 ENV HOME /output

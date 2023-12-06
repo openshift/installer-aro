@@ -34,20 +34,12 @@ var (
 		&bootkube.KubeCloudConfig{},
 		&bootkube.MachineConfigServerTLSSecret{},
 		&bootkube.CVOOverrides{},
-		&bootkube.EtcdServingCAConfigMap{},
 		&bootkube.KubeSystemConfigmapRootCA{},
-		&bootkube.EtcdClientSecret{},
-		&bootkube.OpenshiftMachineConfigOperator{},
-		&bootkube.EtcdNamespace{},
-		&bootkube.EtcdService{},
-		&bootkube.EtcdMetricClientSecret{},
-		&bootkube.EtcdMetricSignerSecret{},
-		&bootkube.EtcdMetricServingCAConfigMap{},
 		&bootkube.OpenshiftConfigSecretPullSecret{},
-		&bootkube.KubevirtInfraNamespace{},
 		&openshift.CloudCredsSecret{},
 		&openshift.KubeadminPasswordSecret{},
 		&openshift.RoleCloudCredsSecretReader{},
+		&openshift.AzureCloudProviderSecret{},
 	}
 
 	// IgnitionConfigs are the ignition-configs targeted assets.
@@ -57,6 +49,15 @@ var (
 		&machine.Master{},
 		&machine.Worker{},
 		&bootstrap.Bootstrap{},
+		&cluster.Metadata{},
+	}
+
+	// SingleNodeIgnitionConfig is the bootstrap-in-place ignition-config targeted assets.
+	SingleNodeIgnitionConfig = []asset.WritableAsset{
+		&kubeconfig.AdminClient{},
+		&password.KubeadminPassword{},
+		&machine.Worker{},
+		&bootstrap.SingleNodeBootstrapInPlace{},
 		&cluster.Metadata{},
 	}
 

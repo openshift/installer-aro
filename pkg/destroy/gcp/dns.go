@@ -1,49 +1,62 @@
 package gcp
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	dns "google.golang.org/api/dns/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type dnsZone struct {
-	name   string
-	domain string
+	name    string
+	domain  string
+	project string
 }
 
-func (o *ClusterUninstaller) listDNSZones() (private *dnsZone, public []dnsZone, err error) {
+func (o *ClusterUninstaller) listDNSZones(ctx context.Context) (private *dnsZone, public []dnsZone, err error) {
 	o.Logger.Debugf("Listing DNS Zones")
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
-	req := o.dnsSvc.ManagedZones.List(o.ProjectID).Fields("managedZones(name,dnsName,visibility),nextPageToken")
-	err = req.Pages(ctx, func(response *dns.ManagedZonesListResponse) error {
-		for _, zone := range response.ManagedZones {
-			switch zone.Visibility {
-			case "private":
-				if o.isClusterResource(zone.Name) {
-					o.Logger.Debugf("Found cluster private dns zone: %s\n", zone.Name)
-					private = &dnsZone{name: zone.Name, domain: zone.DnsName}
+
+	projects := []string{o.ProjectID}
+	if o.NetworkProjectID != "" {
+		projects = append(projects, o.NetworkProjectID)
+	}
+
+	for _, project := range projects {
+		req := o.dnsSvc.ManagedZones.List(project).Fields("managedZones(name,dnsName,visibility),nextPageToken")
+		err = req.Pages(ctx, func(response *dns.ManagedZonesListResponse) error {
+			for _, zone := range response.ManagedZones {
+				switch zone.Visibility {
+				case "private":
+					if o.isClusterResource(zone.Name) || (o.PrivateZoneDomain != "" && o.PrivateZoneDomain == zone.DnsName) {
+						private = &dnsZone{name: zone.Name, domain: zone.DnsName, project: project}
+					}
+				default:
+					public = append(public, dnsZone{name: zone.Name, domain: zone.DnsName, project: project})
 				}
-			default:
-				public = append(public, dnsZone{name: zone.Name, domain: zone.DnsName})
 			}
+			return nil
+		})
+		if err != nil {
+			err = errors.Wrapf(err, "failed to fetch dns zones")
 		}
-		return nil
-	})
-	if err != nil {
-		err = errors.Wrapf(err, "failed to fetch dns zones")
 	}
 	return
 }
 
-func (o *ClusterUninstaller) deleteDNSZone(name string) error {
+func (o *ClusterUninstaller) deleteDNSZone(ctx context.Context, name string) error {
+	if !o.isClusterResource(name) {
+		o.Logger.Warnf("Skipping deletion of DNS Zone %s, not created by installer", name)
+		return nil
+	}
+
 	o.Logger.Debugf("Deleting DNS zones %s", name)
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	err := o.dnsSvc.ManagedZones.Delete(o.ProjectID, name).Context(ctx).Do()
 	if err != nil && !isNoOp(err) {
@@ -53,25 +66,25 @@ func (o *ClusterUninstaller) deleteDNSZone(name string) error {
 	return nil
 }
 
-func (o *ClusterUninstaller) listDNSZoneRecordSets(dnsZoneName string) ([]*dns.ResourceRecordSet, error) {
-	ctx, cancel := o.contextWithTimeout()
+func (o *ClusterUninstaller) listDNSZoneRecordSets(ctx context.Context, zone *dnsZone) ([]*dns.ResourceRecordSet, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
-	req := o.dnsSvc.ResourceRecordSets.List(o.ProjectID, dnsZoneName)
+	req := o.dnsSvc.ResourceRecordSets.List(zone.project, zone.name)
 	result := []*dns.ResourceRecordSet{}
 	err := req.Pages(ctx, func(response *dns.ResourceRecordSetsListResponse) error {
 		result = append(result, response.Rrsets...)
 		return nil
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to fetch resource record sets for zone: %s", dnsZoneName)
+		return nil, errors.Wrapf(err, "failed to fetch resource record sets for zone: %s", zone.name)
 	}
 	return result, nil
 }
 
-func (o *ClusterUninstaller) deleteDNSZoneRecordSets(zoneName string, zoneDomain string, recordSets []*dns.ResourceRecordSet) error {
+func (o *ClusterUninstaller) deleteDNSZoneRecordSets(ctx context.Context, zone *dnsZone, recordSets []*dns.ResourceRecordSet) error {
 	change := &dns.Change{}
 	for _, rr := range recordSets {
-		if (rr.Type == "NS" || rr.Type == "SOA") && strings.TrimRight(rr.Name, ".") == strings.TrimRight(zoneDomain, ".") {
+		if (rr.Type == "NS" || rr.Type == "SOA") && strings.TrimRight(rr.Name, ".") == strings.TrimRight(zone.domain, ".") {
 			continue
 		}
 		change.Deletions = append(change.Deletions, rr)
@@ -79,20 +92,20 @@ func (o *ClusterUninstaller) deleteDNSZoneRecordSets(zoneName string, zoneDomain
 	if len(change.Deletions) == 0 {
 		return nil
 	}
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
-	o.Logger.Debugf("Deleting %d recordset(s) in zone %s", len(change.Deletions), zoneName)
-	change, err := o.dnsSvc.Changes.Create(o.ProjectID, zoneName, change).ClientOperationId(o.requestID("recordsets", zoneName)).Context(ctx).Do()
+	o.Logger.Debugf("Deleting %d recordset(s) in zone %s", len(change.Deletions), zone.name)
+	change, err := o.dnsSvc.Changes.Create(zone.project, zone.name, change).ClientOperationId(o.requestID("recordsets", zone.name)).Context(ctx).Do()
 	if err != nil && !isNoOp(err) {
-		o.resetRequestID("recordsets", zoneName)
-		return errors.Wrapf(err, "failed to delete DNS zone %s recordsets", zoneName)
+		o.resetRequestID("recordsets", zone.name)
+		return errors.Wrapf(err, "failed to delete DNS zone %s recordsets", zone.name)
 	}
 	if change != nil && isErrorStatus(int64(change.ServerResponse.HTTPStatusCode)) {
-		o.resetRequestID("recordsets", zoneName)
-		return errors.Errorf("failed to delete DNS zone %s recordsets with code: %d", zoneName, change.ServerResponse.HTTPStatusCode)
+		o.resetRequestID("recordsets", zone.name)
+		return errors.Errorf("failed to delete DNS zone %s recordsets with code: %d", zone.name, change.ServerResponse.HTTPStatusCode)
 	}
-	o.resetRequestID("recordsets", zoneName)
-	o.Logger.Infof("Deleted %d recordset(s) in zone %s", len(change.Deletions), zoneName)
+	o.resetRequestID("recordsets", zone.name)
+	o.Logger.Infof("Deleted %d recordset(s) in zone %s", len(change.Deletions), zone.name)
 	return nil
 }
 
@@ -106,17 +119,19 @@ func possibleZoneParents(dnsDomain string) []string {
 	return result
 }
 
-func getParentDNSZone(dnsDomain string, publicZones []dnsZone, logger logrus.FieldLogger) *dnsZone {
+func getParentDNSZones(dnsDomain string, publicZones []dnsZone, logger logrus.FieldLogger) []*dnsZone {
+	parentZones := []*dnsZone{}
+
 	possibleParents := possibleZoneParents(dnsDomain)
 	for _, parentDomain := range possibleParents {
 		for _, zone := range publicZones {
 			if zone.domain == parentDomain {
 				logger.Debugf("Found parent dns zone: %s", zone.name)
-				return &dnsZone{name: zone.name, domain: parentDomain}
+				parentZones = append(parentZones, &dnsZone{name: zone.name, domain: parentDomain, project: zone.project})
 			}
 		}
 	}
-	return nil
+	return parentZones
 }
 
 // getMatchingRecordSets finds all recordsets in the parent list that match recordsets in the child list
@@ -146,8 +161,8 @@ func (o *ClusterUninstaller) getMatchingRecordSets(parentRecords, childRecords [
 // from the private zone are matched to records in the parent zone (by using type
 // and name for each record). Matching records are removed from the public zone.
 // Finally all records are removed from the private zone and the private zone is removed.
-func (o *ClusterUninstaller) destroyDNS() error {
-	privateZone, publicZones, err := o.listDNSZones()
+func (o *ClusterUninstaller) destroyDNS(ctx context.Context) error {
+	privateZone, publicZones, err := o.listDNSZones(ctx)
 	if err != nil {
 		return err
 	}
@@ -156,28 +171,30 @@ func (o *ClusterUninstaller) destroyDNS() error {
 		return nil
 	}
 
-	zoneRecordSets, err := o.listDNSZoneRecordSets(privateZone.name)
+	zoneRecordSets, err := o.listDNSZoneRecordSets(ctx, privateZone)
 	if err != nil {
 		return err
 	}
 
-	parentZone := getParentDNSZone(privateZone.domain, publicZones, o.Logger)
-	if parentZone != nil {
-		parentRecordSets, err := o.listDNSZoneRecordSets(parentZone.name)
+	parentZones := getParentDNSZones(privateZone.domain, publicZones, o.Logger)
+	for _, parentZone := range parentZones {
+		parentRecordSets, err := o.listDNSZoneRecordSets(ctx, parentZone)
 		if err != nil {
 			return err
 		}
 		matchingRecordSets := o.getMatchingRecordSets(parentRecordSets, zoneRecordSets)
-		err = o.deleteDNSZoneRecordSets(parentZone.name, parentZone.domain, matchingRecordSets)
-		if err != nil {
-			return err
+		if len(matchingRecordSets) > 0 {
+			err = o.deleteDNSZoneRecordSets(ctx, parentZone, matchingRecordSets)
+			if err != nil {
+				return err
+			}
 		}
 	}
-	err = o.deleteDNSZoneRecordSets(privateZone.name, privateZone.domain, zoneRecordSets)
+	err = o.deleteDNSZoneRecordSets(ctx, privateZone, zoneRecordSets)
 	if err != nil {
 		return err
 	}
-	err = o.deleteDNSZone(privateZone.name)
+	err = o.deleteDNSZone(ctx, privateZone.name)
 	if err != nil {
 		return err
 	}

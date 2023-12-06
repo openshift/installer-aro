@@ -32,7 +32,7 @@ A public IP address is also created for the bootstrap machine during installatio
 ## Network Security Groups
 
 Each cluster creates network security groups for every subnet within the VNet. The default install creates network
-security groups for the control plane and for the compuete node subnets. The default limit of 5000 for new accounts
+security groups for the control plane and for the compute node subnets. The default limit of 5000 for new accounts
 allows for many clusters to be created. The network security groups which exist after the default install are:
 
 1. controlplane
@@ -42,7 +42,7 @@ allows for many clusters to be created. The network security groups which exist 
 
 ## Instance Limits
 
-By default, a cluster will create:
+By default, an x86 cluster will create:
 
 * One Standard_D4s_v3 bootstrap machine (removed after install)
 * Three Standard_D8s_v3 master nodes.
@@ -77,6 +77,32 @@ The specs for the VM sizes (Dsv3-series) are as follows:
 
 More details on VM sizes can be found [here][sizes-general].
 
+By default, an arm64 cluster will create:
+
+* One Standard_D8ps_v5 bootstrap machine (removed after install)
+* Three Standard_D8ps_v5 master nodes.
+* Three Standard_D4ps_v5 worker nodes.
+
+The specs for the VM sizes (Dpsv5-series) are as follows:
+
+* Standard_D8ps_v5
+   * 8 vCPU's, 32GiB ram
+   * IOPs / Throughput (Mbps): (uncached burst) 20000 / 1200
+   * IOPs / Throughput (Mbps): (uncached) 12800 / 290
+   * NICs / Bandwidth (Mbps): 4 / 12500
+   * 16 data disks max
+   * Remote Storage Only
+
+* Standard_D4ps_v5
+   * 4 vCPU's, 16GiB ram
+   * IOPs / Throughput (Mbps): (uncached burst) 20000 / 1200
+   * IOPs / Throughput (Mbps): (uncached) 6400 / 145
+   * NICs / Bandwidth (Mbps): 2 / 12500
+   * 8 data disks max
+   * Remote Storage Only
+
+More details on VM sizes can be found [here][sizes-arm64]. All VMs are Gen2 only.
+
 The default subscription only allows for 20 vCPU's and will need to be [increased](#increasing-limits) to at least 22.
 If you intend to start with a higher number of workers, enable autoscaling and large workloads
 or a different instance type, please ensure you have the necessary remaining instance count within the instance type's
@@ -94,13 +120,13 @@ By default, each cluster will create 3 network load balancers. The default limit
 3. external
   * Public IP address that load balances requests to port 6443 across control-plane nodes
 
-Additional Kuberntes LoadBalancer Service objects will create additional [load balancers][load-balancing]. 
+Additional Kubernetes LoadBalancer Service objects will create additional [load balancers][load-balancing]. 
 
 
 ## Increasing limits
 
 
-To increase a limit beyond the maximum, a suppport request will need to be filed.
+To increase a limit beyond the maximum, a support request will need to be filed.
 
 First, click on "help + support". It is located on the bottom left menu.
 
@@ -137,3 +163,4 @@ You will then review and submit your request.
 [load-balancing]: https://docs.microsoft.com/en-us/azure/load-balancer/load-balancer-overview
 [service-limits]: https://docs.microsoft.com/en-us/azure/azure-subscription-service-limits
 [sizes-general]: https://docs.microsoft.com/en-us/azure/virtual-machines/windows/sizes-general
+[sizes-arm64]: https://docs.microsoft.com/en-us/azure/virtual-machines/dpsv5-dpdsv5-series

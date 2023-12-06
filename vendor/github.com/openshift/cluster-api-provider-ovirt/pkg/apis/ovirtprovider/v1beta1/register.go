@@ -26,13 +26,12 @@ import (
 	"errors"
 	"fmt"
 
+	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
-	"sigs.k8s.io/yaml"
-
-	machinev1 "github.com/openshift/cluster-api/pkg/apis/machine/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
+	"sigs.k8s.io/yaml"
 )
 
 const GroupName = "ovirtproviderconfig"
@@ -45,13 +44,11 @@ var (
 	SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}
 )
 
-
 // MachineSpecFromProviderSpec
 func MachineSpecFromProviderSpec(providerSpec machinev1.ProviderSpec) (*OvirtMachineProviderSpec, error) {
 	if providerSpec.Value == nil {
 		return nil, errors.New("no such providerSpec found in manifest")
 	}
-
 	var config OvirtMachineProviderSpec
 	if err := yaml.Unmarshal(providerSpec.Value.Raw, &config); err != nil {
 		return nil, err
@@ -122,4 +119,3 @@ func ProviderStatusFromRawExtension(rawExtension *runtime.RawExtension) (*OvirtM
 	klog.V(5).Infof("Got provider Status from raw extension: %+v", providerStatus)
 	return providerStatus, nil
 }
-

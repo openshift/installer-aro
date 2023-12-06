@@ -18,7 +18,7 @@ func getDescStruct(opts MetricOpts, labelKeyValues map[string]string) string {
 	}
 	sort.Strings(lpStrings)
 	return fmt.Sprintf("Desc{fqName: %q, help: %q, constLabels: {%s}, variableLabels: %v}",
-		opts.Name, opts.Desc, strings.Join(lpStrings, ","), []string{})
+		opts.Name, opts.Desc, strings.Join(lpStrings, ","), "{}")
 }
 
 func getCollectorDescription(collector prometheus.Collector) string {
@@ -32,7 +32,7 @@ func getCollectorDescription(collector prometheus.Collector) string {
 	}
 }
 
-//TestNewMetricBuilder tests the Metric Builder initializer.
+// TestNewMetricBuilder tests the Metric Builder initializer.
 func TestMetricBuilder(t *testing.T) {
 	cases := []struct {
 		name                  string
@@ -109,7 +109,7 @@ func TestMetricBuilder(t *testing.T) {
 	}
 }
 
-//TestMetricBuilderCollector tests the PromCollector function.
+// TestMetricBuilderCollector tests the PromCollector function.
 func TestMetricBuilderCollector(t *testing.T) {
 	cases := []struct {
 		name                  string
@@ -175,6 +175,9 @@ func TestMetricBuilderCollector(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			metricBuilder, err := NewMetricBuilder(tc.opts, tc.value, tc.labelKeyValues)
+			if !assert.NoError(t, err, "error constructing new metric builder") {
+				return
+			}
 			collector, err := metricBuilder.PromCollector()
 			if tc.expectedErrorMessage == "" {
 				assert.NoError(t, err, "expected successful collector creation")
@@ -189,7 +192,7 @@ func TestMetricBuilderCollector(t *testing.T) {
 	}
 }
 
-//TestNewMetricBuilder tests the Metric Builder initializer.
+// TestNewMetricBuilder tests the Metric Builder initializer.
 func TestNewMetricBuilder(t *testing.T) {
 	opts := MetricOpts{
 		Labels:     []string{"test1", "test2", "test3"},
@@ -220,6 +223,9 @@ func TestNewMetricBuilder(t *testing.T) {
 	assert.False(t, found)
 
 	err = metricBuilder.AddLabelValue("test3", "metric labels")
+	if err != nil {
+		assert.Failf(t, err.Error(), "error adding label value")
+	}
 	_, found = metricBuilder.labelKeyValues["test3"]
 	assert.True(t, found)
 }

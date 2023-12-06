@@ -40,7 +40,7 @@ metadata:
 spec:
   config:
     ignition:
-      version: 3.1.0
+      version: 3.2.0
     passwd:
       users:
       - name: core
@@ -66,19 +66,11 @@ metadata:
 spec:
   config:
     ignition:
-      version: 3.1.0
-    storage:
-      files:
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,QUREIG5vc210
-        mode: 384
-        overwrite: true
-        path: /etc/pivot/kernel-args
-        user:
-          name: root
+      version: 3.2.0
   extensions: null
   fips: false
-  kernelArguments: null
+  kernelArguments:
+  - nosmt
   kernelType: ""
   osImageURL: ""
 `},
@@ -97,19 +89,11 @@ metadata:
 spec:
   config:
     ignition:
-      version: 3.1.0
-    storage:
-      files:
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,QUREIG5vc210
-        mode: 384
-        overwrite: true
-        path: /etc/pivot/kernel-args
-        user:
-          name: root
+      version: 3.2.0
   extensions: null
   fips: false
-  kernelArguments: null
+  kernelArguments:
+  - nosmt
   kernelType: ""
   osImageURL: ""
 `, `apiVersion: machineconfiguration.openshift.io/v1
@@ -122,7 +106,7 @@ metadata:
 spec:
   config:
     ignition:
-      version: 3.1.0
+      version: 3.2.0
     passwd:
       users:
       - name: core
@@ -144,8 +128,8 @@ spec:
 					UUID:    "test-uuid",
 					InfraID: "test-infra-id",
 				},
-				&installconfig.InstallConfig{
-					Config: &types.InstallConfig{
+				installconfig.MakeAsset(
+					&types.InstallConfig{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-cluster",
 						},
@@ -168,9 +152,9 @@ spec:
 								},
 							},
 						},
-					},
-				},
+					}),
 				(*rhcos.Image)(pointer.StringPtr("test-image")),
+				(*rhcos.Release)(pointer.StringPtr("412.86.202208101040-0")),
 				&machine.Worker{
 					File: &asset.File{
 						Filename: "worker-ignition",
@@ -190,6 +174,111 @@ spec:
 			} else {
 				assert.Equal(t, 0, len(worker.MachineConfigFiles), "expected no machine config files")
 			}
+		})
+	}
+}
+
+func TestComputeIsNotModified(t *testing.T) {
+	parents := asset.Parents{}
+	installConfig := installconfig.MakeAsset(
+		&types.InstallConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-cluster",
+			},
+			SSHKey:     "ssh-rsa: dummy-key",
+			BaseDomain: "test-domain",
+			Platform: types.Platform{
+				AWS: &awstypes.Platform{
+					Region: "us-east-1",
+					DefaultMachinePlatform: &awstypes.MachinePool{
+						InstanceType: "TEST_INSTANCE_TYPE",
+					},
+				},
+			},
+			Compute: []types.MachinePool{
+				{
+					Replicas:       pointer.Int64Ptr(1),
+					Hyperthreading: types.HyperthreadingDisabled,
+					Platform: types.MachinePoolPlatform{
+						AWS: &awstypes.MachinePool{
+							Zones:        []string{"us-east-1a"},
+							InstanceType: "",
+						},
+					},
+				},
+			},
+		})
+
+	parents.Add(
+		&installconfig.ClusterID{
+			UUID:    "test-uuid",
+			InfraID: "test-infra-id",
+		},
+		installConfig,
+		(*rhcos.Image)(pointer.StringPtr("test-image")),
+		(*rhcos.Release)(pointer.StringPtr("412.86.202208101040-0")),
+		&machine.Worker{
+			File: &asset.File{
+				Filename: "worker-ignition",
+				Data:     []byte("test-ignition"),
+			},
+		},
+	)
+	worker := &Worker{}
+	if err := worker.Generate(parents); err != nil {
+		t.Fatalf("failed to generate master machines: %v", err)
+	}
+
+	if installConfig.Config.Compute[0].Platform.AWS.Type != "" {
+		t.Fatalf("compute in the install config has been modified")
+	}
+}
+
+func TestDefaultAWSMachinePoolPlatform(t *testing.T) {
+	type testCase struct {
+		name                string
+		poolName            string
+		expectedMachinePool awstypes.MachinePool
+		assert              func(tc *testCase)
+	}
+	cases := []testCase{
+		{
+			name:     "default EBS type for compute pool",
+			poolName: types.MachinePoolComputeRoleName,
+			expectedMachinePool: awstypes.MachinePool{
+				EC2RootVolume: awstypes.EC2RootVolume{
+					Type: awstypes.VolumeTypeGp3,
+					Size: decimalRootVolumeSize,
+				},
+			},
+			assert: func(tc *testCase) {
+				mp := defaultAWSMachinePoolPlatform(tc.poolName)
+				want := tc.expectedMachinePool.EC2RootVolume.Type
+				got := mp.EC2RootVolume.Type
+				assert.Equal(t, want, got, "unexepcted EBS type")
+			},
+		},
+		{
+			name:     "default EBS type for edge pool",
+			poolName: types.MachinePoolEdgeRoleName,
+			expectedMachinePool: awstypes.MachinePool{
+				EC2RootVolume: awstypes.EC2RootVolume{
+					Type: awstypes.VolumeTypeGp2,
+					Size: decimalRootVolumeSize,
+				},
+			},
+			assert: func(tc *testCase) {
+				mp := defaultAWSMachinePoolPlatform(tc.poolName)
+				want := tc.expectedMachinePool.EC2RootVolume.Type
+				got := mp.EC2RootVolume.Type
+				assert.Equal(t, want, got, "unexepcted EBS type")
+			},
+		},
+	}
+	for i := range cases {
+		tc := cases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			tc.assert(&tc)
 		})
 	}
 }

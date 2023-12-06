@@ -1,18 +1,18 @@
 # See the OWNERS_ALIASES docs: https://git.k8s.io/community/contributors/guide/owners.md#OWNERS_ALIASES
 
 aliases:
-  installer-approvers:
-    - abhinavdahiya
-    - crawford
-    - staebler
-    - sdodson
-    - smarterclayton
-    - wking
-  installer-reviewers:
+  installer-team:
+    - andfasano
+    - AnnaZivkovic
+    - barbacbd
+    - bfournie
     - jhixson74
-    - jstuever
-    - mtnbikenc
     - patrickdillon
+    - pawanpinjarkar
+    - r4f4
+    - rna-afk
+    - rwsu
+    - sadasu
   libvirt-approvers:
     - praveenkumar
     - cfergeau
@@ -21,83 +21,141 @@ aliases:
     - cfergeau
   openstack-approvers:
     - EmilienM
-    - Fedosin
-    - adduarte
-    - iamemilio
+    - MaysaMacedo
+    - dulek
+    - gryf
     - mandre
     - mdbooth
     - pierreprinetti
+    - stephenfin
   openstack-reviewers:
     - EmilienM
-    - Fedosin
-    - adduarte
-    - iamemilio
+    - MaysaMacedo
+    - dulek
+    - gryf
     - mandre
     - mdbooth
     - pierreprinetti
+    - stephenfin
+  powervs-approvers:
+    - clnperez
+    - mkumatag
+    - Prashanth684
+  powervs-reviewers:
+    - clnperez
+    - mkumatag
+    - Prashanth684
+    - mjturek
   vsphere-approvers:
     - dav1x
-    - mtnbikenc
     - jcpowermac
     - patrickdillon
+    - rvanderp3
   vsphere-reviewers:
-    - mtnbikenc
     - jcpowermac
     - patrickdillon
   baremetal-approvers:
-    - dhellmann
-    - hardys
-    - stbenjam
+    - dtantsur
+    - elfosardo
+    - honza
+    - iurygregory
   baremetal-reviewers:
-    - celebdor
-    - dhellmann
-    - markmc
-    - russellb
-    - hardys
-    - stbenjam
+    - dtantsur
+    - elfosardo
+    - honza
+    - iurygregory
   aws-approvers:
-    - jstuever
+    - mtulio
     - patrickdillon
   aws-reviewers:
-    - jstuever
+    - mtulio
     - patrickdillon
   gcp-approvers:
-    - jstuever
     - patrickdillon
   gcp-reviewers:
-    - jstuever
     - patrickdillon
   azure-approvers:
-    - fabianofranz
     - jhixson74
+    - mtulio
   azure-reviewers:
-    - asalkeld
-    - ehashman
-    - fabianofranz
     - jhixson74
-    - jim-minter
-    - mjudeikis
+    - mtulio
   ovirt-approvers:
-    - rgolangh
-    - Gal-Zaidman
+    - janosdebugs
     - eslutsky
-    - dougsland
-    - janoszen
+    - mmartinv
+    - bkhizgiy
   ovirt-reviewers:
-    - rgolangh
-    - Gal-Zaidman
+    - janosdebugs
     - eslutsky
-    - dougsland
-    - janoszen
-  kubevirt-approvers:
-    - nirarg
-    - bardielle
-    - ravidbro
-    - rgolangh
-    - chenyosef
-  kubevirt-reviewers:
-    - nirarg
-    - bardielle
-    - ravidbro
-    - rgolangh
-    - chenyosef
+    - mmartinv
+    - bkhizgiy
+  ibmcloud-approvers:
+    - bobbyradford
+    - hasueki
+    - rvanderp3
+  ibmcloud-reviewers:
+    - bobbyradford
+    - hasueki
+    - rvanderp3
+  nutanix-approvers:
+    - adiantum
+    - rvanderp3
+    - thunderboltsid
+    - yanhua121
+  nutanix-reviewers:
+    - adiantum
+    - rvanderp3
+    - thunderboltsid
+    - yanhua121
+  # Keep in sync with the `coreos-approvers` and `coreos-reviewers` lists in https://github.com/openshift/release/blob/master/OWNERS_ALIASES
+  coreos-approvers:
+    - c4rt0
+    - cgwalters
+    - dustymabe
+    - mike-nguyen
+    - jlebon
+    - travier
+    - HuijingHei
+    - jmarrero
+    - aaradhak
+    - ravanelli
+    - gursewak1997
+    - prestist
+    - marmijo
+    - RishabhSaini
+    - Adam0Brien
+    - lukewarmtemp
+    - yasminvalim
+    - jbtrystram
+  coreos-reviewers:
+    - c4rt0
+    - cgwalters
+    - dustymabe
+    - mike-nguyen
+    - jlebon
+    - travier
+    - HuijingHei
+    - jmarrero
+    - aaradhak
+    - ravanelli
+    - gursewak1997
+    - prestist
+    - marmijo
+    - RishabhSaini
+    - Adam0Brien
+    - lukewarmtemp
+    - yasminvalim
+    - jbtrystram
+  agent-reviewers:
+    - andfasano
+    - bfournie
+    - pawanpinjarkar
+    - rwsu
+    - zaneb
+  agent-approvers:
+    - andfasano
+    - bfournie
+    - pawanpinjarkar
+    - rwsu
+    - zaneb

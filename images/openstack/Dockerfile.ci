@@ -1,23 +1,23 @@
 # This Dockerfile is used by CI to test using OpenShift Installer against an OpenStack cloud.
 # It builds an image containing the openshift-install command as well as the openstack cli.
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.14 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.14 AS builder
+ARG TAGS=""
 WORKDIR /go/src/github.com/openshift/installer
 COPY . .
-RUN hack/build.sh
+RUN DEFAULT_ARCH="$(go env GOHOSTARCH)" hack/build.sh
 
-FROM registry.svc.ci.openshift.org/origin/4.7:cli AS cli
+FROM registry.ci.openshift.org/ocp/4.15:cli AS cli
 
-FROM registry.svc.ci.openshift.org/origin/4.7:base
+FROM registry.ci.openshift.org/ocp/4.15:base
 COPY --from=cli /usr/bin/oc /bin/oc
 COPY --from=builder /go/src/github.com/openshift/installer/bin/openshift-install /bin/openshift-install
-COPY --from=builder /go/src/github.com/openshift/installer/upi /var/lib/openshift-install/upi
-COPY --from=builder /go/src/github.com/openshift/installer/images/openstack/rdo-train.repo /etc/yum.repos.d/rdo-train.repo
-COPY --from=builder /go/src/github.com/openshift/installer/images/openstack/rdo-train.gpg /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Cloud
+COPY --from=builder /go/src/github.com/openshift/installer/upi/openstack /var/lib/openshift-install/upi
+COPY --from=builder /go/src/github.com/openshift/installer/docs/user/openstack /var/lib/openshift-install/docs
 COPY --from=builder /go/src/github.com/openshift/installer/hack/openstack/test-manifests.sh /go/src/github.com/openshift/installer/scripts/openstack/manifest-tests /var/lib/openshift-install/manifest-tests
 
 # Install Dependendencies for tests
 # https://github.com/openshift/origin/blob/6114cbc507bf18890f009f16ee424a62007bc390/images/tests/Dockerfile.rhel
-RUN yum install --setopt=tsflags=nodocs -y git gzip util-linux glibc-locale-source && \
+RUN yum install --setopt=tsflags=nodocs -y gettext make git gzip util-linux glibc-locale-source && \
     yum clean all && rm -rf /var/cache/yum/* && \
     localedef -c -f UTF-8 -i en_US en_US.UTF-8 && \
     git config --system user.name test && \
@@ -26,10 +26,21 @@ RUN yum install --setopt=tsflags=nodocs -y git gzip util-linux glibc-locale-sour
 
 RUN yum update -y && \
     yum install --setopt=tsflags=nodocs -y \
-    python3-openstackclient ansible-2.9.14-1.el8ae python3-openstacksdk python3-netaddr unzip jq && \
+    python38 unzip jq nmap && \
+    yum erase -y python36 && \
     yum clean all && rm -rf /var/cache/yum/*
 
-RUN python -m pip install yq
+RUN python3 -m pip install --upgrade pip
+
+# ansible 2.9 is EOL in September 2023, so we need to install ansible-core and get the collections from source
+# until we have a package available.
+RUN python3 -m pip install ansible-core
+RUN ansible-galaxy collection install openstack.cloud ansible.utils community.general && \
+    mkdir -p /usr/share/ansible/collections/ansible_collections && \
+    cp -r /root/.ansible/collections/ansible_collections/* /usr/share/ansible/collections/ansible_collections/
+
+# ansible-core comes with python3.8 but openstacksdk comes with python3.6 so let's install them from pip.
+RUN python3 -m pip install yq openstackclient openstacksdk netaddr
 
 # The Continuous Integration machinery relies on Route53 for DNS while testing the cluster.
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \

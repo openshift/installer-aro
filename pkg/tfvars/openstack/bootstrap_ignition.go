@@ -8,14 +8,15 @@ import (
 	"strings"
 
 	ignutil "github.com/coreos/ignition/v2/config/util"
-	igntypes "github.com/coreos/ignition/v2/config/v3_1/types"
+	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/imagedata"
 	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
-	"github.com/gophercloud/utils/openstack/clientconfig"
 	"github.com/sirupsen/logrus"
 	"github.com/vincent-petithory/dataurl"
 
 	"github.com/openshift/installer/pkg/asset/ignition"
+	"github.com/openshift/installer/pkg/types"
+	openstackdefaults "github.com/openshift/installer/pkg/types/openstack/defaults"
 )
 
 // Starting from OpenShift 4.4 we store bootstrap Ignition configs in Glance.
@@ -23,11 +24,8 @@ import (
 // uploadBootstrapConfig uploads the bootstrap Ignition config in Glance and returns its location
 func uploadBootstrapConfig(cloud string, bootstrapIgn string, clusterID string) (string, error) {
 	logrus.Debugln("Creating a Glance image for your bootstrap ignition config...")
-	opts := clientconfig.ClientOpts{
-		Cloud: cloud,
-	}
 
-	conn, err := clientconfig.NewServiceClient("image", &opts)
+	conn, err := openstackdefaults.NewServiceClient("image", openstackdefaults.DefaultClientOpts(cloud))
 	if err != nil {
 		return "", err
 	}
@@ -88,7 +86,7 @@ func parseCertificateBundle(userCA []byte) ([]igntypes.Resource, error) {
 
 // generateIgnitionShim is used to generate an ignition file that contains a user ca bundle
 // in its Security section.
-func generateIgnitionShim(userCA string, clusterID string, bootstrapConfigURL string, tokenID string) (string, error) {
+func generateIgnitionShim(userCA string, clusterID string, bootstrapConfigURL string, tokenID string, proxy *types.Proxy) (string, error) {
 	fileMode := 420
 	bootstrapHTTPResponseHeaders := 120
 
@@ -154,6 +152,7 @@ func generateIgnitionShim(userCA string, clusterID string, bootstrapConfigURL st
 					},
 				},
 			},
+			Proxy: ignitionProxy(proxy),
 		},
 		Storage: igntypes.Storage{
 			Files: []igntypes.File{
@@ -179,11 +178,7 @@ func generateIgnitionShim(userCA string, clusterID string, bootstrapConfigURL st
 
 // getAuthToken fetches valid OpenStack authentication token ID
 func getAuthToken(cloud string) (string, error) {
-	opts := &clientconfig.ClientOpts{
-		Cloud: cloud,
-	}
-
-	conn, err := clientconfig.NewServiceClient("identity", opts)
+	conn, err := openstackdefaults.NewServiceClient("identity", openstackdefaults.DefaultClientOpts(cloud))
 	if err != nil {
 		return "", err
 	}
@@ -194,4 +189,25 @@ func getAuthToken(cloud string) (string, error) {
 	}
 
 	return token, nil
+}
+
+func ignitionProxy(proxy *types.Proxy) igntypes.Proxy {
+	var ignProxy igntypes.Proxy
+	if proxy == nil {
+		return ignProxy
+	}
+	if httpProxy := proxy.HTTPProxy; httpProxy != "" {
+		ignProxy.HTTPProxy = &httpProxy
+	}
+	if httpsProxy := proxy.HTTPSProxy; httpsProxy != "" {
+		ignProxy.HTTPSProxy = &httpsProxy
+	}
+	ignProxy.NoProxy = make([]igntypes.NoProxyItem, 0, len(proxy.NoProxy))
+	if noProxy := proxy.NoProxy; noProxy != "" {
+		noProxySplit := strings.Split(noProxy, ",")
+		for _, p := range noProxySplit {
+			ignProxy.NoProxy = append(ignProxy.NoProxy, igntypes.NoProxyItem(p))
+		}
+	}
+	return ignProxy
 }

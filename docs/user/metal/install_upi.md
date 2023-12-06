@@ -1,6 +1,8 @@
 # Install: BareMetal User Provided Infrastructure
 
-The steps for performing a UPI-based install are outlined here. Several [Terraform][upi-metal-example] templates are provided as an example to help model your own.
+The upstream project that provides management of bare metal hosts is [metal.equinix.com][equinix-metal].
+
+The steps for performing a UPI-based install are maintained in the official [openshift docs][openshift-upi-metal].
 
 ## Table of contents
 
@@ -224,11 +226,9 @@ INFO Waiting up to 30m0s for the cluster to initialize...
 
 ## Example Bare-Metal UPI deployment
 
-Terraform [templates][upi-metal-example] provides an example of using OpenShift Installer to create an bare-metal UPI OpenShift cluster on Packet.net
-
 ### Overview
 
-* Compute: Uses Packet.net to deploy bare-metal machines.
+* Compute: Uses [Equinix Metal][equinix-metal] to deploy bare-metal machines.
     Uses [matchbox] to serve PXE scripts and Ignition configs for bootstrap, control plane and worker machines.
     Uses `public` IPv4 addresses for each machine, so that all the machines are accessible on the internet.
 
@@ -236,21 +236,13 @@ Terraform [templates][upi-metal-example] provides an example of using OpenShift 
     Uses AWS [Route53](aws-route53) to configure the all the DNS records.
     Uses Round-Robin DNS [RRDNS][rrdns] in place of load balancing solutions.
 
-Refer to the pre-requisites for using the example [here][upi-metal-example-pre-req]
+Refer to the pre-requisites for UPI bare-metal installations [here][upi-metal-prereqs].
 
 ### Creating the cluster
 
 #### Installer assets
 
 Use the OpenShift Installer to create [Ignition configs](#getting-ignition-configs-for-machines) that will be used to create bootstrap, control plane and worker machines.
-
-#### Terraform variable file
-
-Use the [example][upi-metal-example-tfvar] Terraform variable file to create terraform variable file, and edit the `tfvars` file on your favorite editor.
-
-```sh
-cp terraform.tfvars{.example,}
-```
 
 #### Creating resources
 
@@ -274,7 +266,7 @@ Use the bootstrap [monitoring](#monitor-for-bootstrap-complete) to track when cl
 terraform apply -auto-approve -var=bootstrap_dns="false"
 ```
 
-NOTE: The bootstrap resources like the bootstrap machines currently cannot be removed using terraform. You can use the Packet.net console to remove the bootstrap machine. All the resources will be cleaned up by `terraform destroy`
+NOTE: The bootstrap resources like the bootstrap machines currently cannot be removed using terraform. You can use the [Equinix Metal console][equinix-metal-console] to remove the bootstrap machine. All the resources will be cleaned up by `terraform destroy`
 
 ### Approving server certificates for nodes
 
@@ -312,6 +304,8 @@ terraform destroy -auto-approve
 [coreos-installer-args]: https://github.com/coreos/coreos-installer#kernel-command-line-options-for-coreos-installer-running-in-the-initramfs
 [coreos-installer]: https://github.com/coreos/coreos-installer#coreos-installer
 [csr-requests]: https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster/#requesting-a-certificate
+[equinix-metal]: https://metal.equinix.com
+[equinix-metal-console]: https://console.equinix.com
 [etcd-ports]: https://github.com/openshift/origin/pull/21520
 [machine-config-server]: https://github.com/openshift/machine-config-operator/blob/master/docs/MachineConfigServer.md
 [matchbox]: https://github.com/coreos/matchbox
@@ -325,3 +319,5 @@ terraform destroy -auto-approve
 [upi-metal-example-pre-req]: ../../../upi/metal/README.md#pre-requisites
 [upi-metal-example-tfvar]: ../../../upi/metal/terraform.tfvars.example
 [upi-metal-example]: ../../../upi/metal/README.md
+[openshift-upi-metal]: https://docs.openshift.com/container-platform/latest/installing/installing_bare_metal/installing-bare-metal.html
+[upi-metal-prereqs]: https://docs.openshift.com/container-platform/latest/installing/installing_bare_metal/installing-bare-metal.html#prerequisites

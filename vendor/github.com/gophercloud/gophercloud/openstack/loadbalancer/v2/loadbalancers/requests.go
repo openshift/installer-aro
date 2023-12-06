@@ -2,6 +2,8 @@ package loadbalancers
 
 import (
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/listeners"
+	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
 	"github.com/gophercloud/gophercloud/pagination"
 )
 
@@ -29,6 +31,7 @@ type ListOpts struct {
 	OperatingStatus    string   `q:"operating_status"`
 	Name               string   `q:"name"`
 	FlavorID           string   `q:"flavor_id"`
+	AvailabilityZone   string   `q:"availability_zone"`
 	Provider           string   `q:"provider"`
 	Limit              int      `q:"limit"`
 	Marker             string   `q:"marker"`
@@ -104,6 +107,9 @@ type CreateOpts struct {
 	// The IP address of the Loadbalancer.
 	VipAddress string `json:"vip_address,omitempty"`
 
+	// The ID of the QoS Policy which will apply to the Virtual IP
+	VipQosPolicyID string `json:"vip_qos_policy_id,omitempty"`
+
 	// The administrative state of the Loadbalancer. A valid value is true (UP)
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
@@ -111,8 +117,26 @@ type CreateOpts struct {
 	// The UUID of a flavor.
 	FlavorID string `json:"flavor_id,omitempty"`
 
+	// The name of an Octavia availability zone.
+	// Requires Octavia API version 2.14 or later.
+	AvailabilityZone string `json:"availability_zone,omitempty"`
+
 	// The name of the provider.
 	Provider string `json:"provider,omitempty"`
+
+	// Listeners is a slice of listeners.CreateOpts which allows a set
+	// of listeners to be created at the same time the Loadbalancer is created.
+	//
+	// This is only possible to use when creating a fully populated
+	// load balancer.
+	Listeners []listeners.CreateOpts `json:"listeners,omitempty"`
+
+	// Pools is a slice of pools.CreateOpts which allows a set of pools
+	// to be created at the same time the Loadbalancer is created.
+	//
+	// This is only possible to use when creating a fully populated
+	// load balancer.
+	Pools []pools.CreateOpts `json:"pools,omitempty"`
 
 	// Tags is a set of resource tags.
 	Tags []string `json:"tags,omitempty"`
@@ -163,6 +187,9 @@ type UpdateOpts struct {
 	// The administrative state of the Loadbalancer. A valid value is true (UP)
 	// or false (DOWN).
 	AdminStateUp *bool `json:"admin_state_up,omitempty"`
+
+	// The ID of the QoS Policy which will apply to the Virtual IP
+	VipQosPolicyID *string `json:"vip_qos_policy_id,omitempty"`
 
 	// Tags is a set of resource tags.
 	Tags *[]string `json:"tags,omitempty"`

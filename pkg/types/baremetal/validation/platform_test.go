@@ -6,12 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"sigs.k8s.io/yaml"
+
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/ipnet"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/baremetal"
 	"github.com/openshift/installer/pkg/types/baremetal/defaults"
-	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 /*
@@ -42,51 +45,170 @@ func TestValidatePlatform(t *testing.T) {
 				BootstrapProvisioningIP("fd2e:6f44:5dd8:b856::2").build(),
 		},
 		{
-			name: "invalid_apivip",
-			platform: platform().
-				APIVIP("192.168.222.2").build(),
-			expected: "Invalid value: \"192.168.222.2\": IP expected to be in one of the machine networks: 192.168.111.0/24",
-		},
-		{
-			name: "invalid_ingressvip",
-			platform: platform().
-				IngressVIP("192.168.222.4").build(),
-			expected: "Invalid value: \"192.168.222.4\": IP expected to be in one of the machine networks: 192.168.111.0/24",
-		},
-		{
 			name: "invalid_hosts",
 			platform: platform().
 				Hosts().build(),
 			expected: "bare metal hosts are missing",
 		},
 		{
-			name: "toofew_hosts",
+			name: "toofew_masters_norole",
 			config: installConfig().
 				BareMetalPlatform(
 					platform().Hosts(
-						host1())).
+						host1().Role("worker"),
+						host2())).
 				ControlPlane(
 					machinePool().Replicas(3)).
 				Compute(
-					machinePool().Replicas(2),
+					machinePool().Replicas(1)).build(),
+			expected: "baremetal.Hosts: Required value: not enough hosts found \\(1\\) to support all the configured ControlPlane replicas \\(3\\)",
+		},
+		{
+			name: "toofew_masters",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1().Role("master"),
+						host2().Role("worker"))).
+				ControlPlane(
+					machinePool().Replicas(3)).
+				Compute(
+					machinePool().Replicas(1)).build(),
+			expected: "baremetal.Hosts: Required value: not enough hosts found \\(1\\) to support all the configured ControlPlane replicas \\(3\\)",
+		},
+		{
+			name: "toofew_workers",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1().Role("master"),
+						host2().Role("worker"))).
+				ControlPlane(
+					machinePool().Replicas(1)).
+				Compute(
 					machinePool().Replicas(3)).build(),
-			expected: "baremetal.Hosts: Required value: not enough hosts found \\(1\\) to support all the configured ControlPlane and Compute replicas \\(8\\)",
+			expected: "baremetal.Hosts: Required value: not enough hosts found \\(1\\) to support all the configured Compute replicas \\(3\\)",
 		},
 		{
 			name: "enough_hosts",
 			config: installConfig().
 				BareMetalPlatform(
 					platform().Hosts(
-						host1(),
-						host2())).
+						host1().Role("master"),
+						host2().Role("worker"))).
 				ControlPlane(
+					machinePool().Replicas(1)).
+				Compute(
+					machinePool().Replicas(1)).build(),
+		},
+		{
+			name: "enough_hosts_norole",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1(),
+						host2(),
+						host3())).
+				ControlPlane(
+					machinePool().Replicas(1)).
+				Compute(
+					machinePool().Replicas(2)).build(),
+		},
+		{
+			name: "enough_hosts_mixed",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1().Role("master"),
+						host2().Role("worker"),
+						host3(),
+						host4())).
+				ControlPlane(
+					machinePool().Replicas(2)).
+				Compute(
+					machinePool().Replicas(2)).build(),
+		},
+		{
+			name: "not_enough_hosts_norole",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1(),
+						host2(),
+						host3())).
+				ControlPlane(
+					machinePool().Replicas(2)).
+				Compute(
+					machinePool().Replicas(2)).build(),
+			expected: "baremetal.Hosts: Required value: not enough hosts found \\(1\\) to support all the configured Compute replicas \\(2\\)",
+		},
+		{
+			name: "more_than_enough_hosts",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1().Role("master"),
+						host2().Role("master"),
+						host3().Role("worker"),
+						host4().Role("worker"),
+						host5())).
+				ControlPlane(
+					machinePool().Replicas(1)).
+				Compute(
+					machinePool().Replicas(1)).build(),
+		},
+		{
+			name: "norole_for_workers",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1().Role("master"),
+						host2().Role("master"),
+						host3().Role("master"),
+						host4(),
+						host5())).
+				ControlPlane(
+					machinePool().Replicas(3)).
+				Compute(
 					machinePool().Replicas(2)).build(),
 		},
 		{
 			name: "missing_name",
-			platform: platform().
-				Hosts(host1().Name("")).build(),
+			config: installConfig().
+				BareMetalPlatform(
+					platform().Hosts(
+						host1().Name(""))).
+				ControlPlane(machinePool().Replicas(1)).build(),
 			expected: "baremetal.hosts\\[0\\].Name: Required value: missing Name",
+		},
+		{
+			name: "forbidden_feature_loadbalancer",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().LoadBalancerType("OpenShiftManagedDefault")).build(),
+			expected: "baremetal.loadBalancer: Forbidden: load balancer is not supported in this feature set",
+		},
+		{
+			name: "allowed_feature_loadbalancer_openshift_managed_default",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().LoadBalancerType("OpenShiftManagedDefault")).
+				FeatureSet(configv1.TechPreviewNoUpgrade).build(),
+		},
+		{
+			name: "allowed_feature_loadbalancer_user_managed",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().LoadBalancerType("UserManaged")).
+				FeatureSet(configv1.TechPreviewNoUpgrade).build(),
+		},
+		{
+			name: "allowed_feature_loadbalancer_invalid",
+			config: installConfig().
+				BareMetalPlatform(
+					platform().LoadBalancerType("FooBar")).
+				FeatureSet(configv1.TechPreviewNoUpgrade).build(),
+			expected: "baremetal.loadBalancer.type: Invalid value: \"FooBar\": invalid load balancer type",
 		},
 		{
 			name: "missing_mac",
@@ -103,6 +225,36 @@ func TestValidatePlatform(t *testing.T) {
 			expected: "baremetal.hosts\\[1\\].Name: Duplicate value: \"host1\"",
 		},
 		{
+			name: "valid_host_name",
+			platform: platform().
+				Hosts(host1().Name("host1")).build(),
+			expected: "",
+		},
+		{
+			name: "valid_host_name_fqdn",
+			platform: platform().
+				Hosts(host1().Name("test.example.com")).build(),
+			expected: "",
+		},
+		{
+			name: "invalid_host_name_char",
+			platform: platform().
+				Hosts(host1().Name("test,example.com")).build(),
+			expected: "baremetal.Hosts\\[0\\].name: Invalid value: \"test,example.com\"",
+		},
+		{
+			name: "invalid_host_name_uppercase",
+			platform: platform().
+				Hosts(host1().Name("Host1")).build(),
+			expected: "baremetal.Hosts\\[0\\].name: Invalid value: \"Host1\"",
+		},
+		{
+			name: "invalid_host_name_length",
+			platform: platform().
+				Hosts(host1().Name(strings.Repeat("a", 300))).build(),
+			expected: "baremetal.Hosts\\[0\\].name: Invalid value: \"aaaaaaaaa",
+		},
+		{
 			name: "duplicate_host_mac",
 			platform: platform().
 				Hosts(
@@ -114,13 +266,25 @@ func TestValidatePlatform(t *testing.T) {
 			name: "invalid_boot_mode",
 			platform: platform().
 				Hosts(host1().BootMode("not-a-valid-value")).build(),
-			expected: "baremetal.Hosts\\[0\\].bootMode: Invalid value: \"not-a-valid-value\": bootMode must be one of \"UEFI\" or \"legacy\"",
+			expected: "baremetal.Hosts\\[0\\].bootMode: Unsupported value: \"not-a-valid-value\": supported values: \"UEFI\", \"UEFISecureBoot\", \"legacy\"",
 		},
 		{
 			name: "uefi_boot_mode",
 			platform: platform().
 				Hosts(host1().BootMode("UEFI")).build(),
 			expected: "",
+		},
+		{
+			name: "uefi_secure_boot_mode",
+			platform: platform().
+				Hosts(host1().BMCAddress("redfish://example.com/redfish/v1").BootMode("UEFISecureBoot")).build(),
+			expected: "",
+		},
+		{
+			name: "unsupported_uefi_secure_boot_mode",
+			platform: platform().
+				Hosts(host1().BootMode("UEFISecureBoot")).build(),
+			expected: "baremetal.Hosts\\[0\\].bootMode: Invalid value: \"UEFISecureBoot\": driver ipmi does not support UEFI secure boot",
 		},
 		{
 			name: "legacy_boot_mode",
@@ -141,22 +305,111 @@ func TestValidatePlatform(t *testing.T) {
 			platform: platform().ProvisioningNetwork("Invalid").build(),
 			expected: `Unsupported value: "Invalid": supported values: "Disabled", "Managed", "Unmanaged"`,
 		},
+		{
+			name:     "networkConfig_invalid",
+			platform: platform().Hosts(host1().NetworkConfig("Not a valid yaml content")).build(),
+			expected: ".*Invalid value.*Not a valid yaml: error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type map\\[string\\]interface \\{\\}",
+		},
+		{
+			name: "networkConfig_valid_yml",
+			platform: platform().Hosts(host1().NetworkConfig(`
+interfaces:
+- name: eth1
+  type: ethernet
+  state: up
+- name: linux-br0
+  type: linux-bridge
+  state: up
+  bridge:
+    options:
+      group-forward-mask: 0
+      mac-ageing-time: 300
+      multicast-snooping: true
+      stp:
+        enabled: true
+        forward-delay: 15
+        hello-time: 2
+        max-age: 20
+        priority: 32768
+      port:
+        - name: eth1
+          stp-hairpin-mode: false
+          stp-path-cost: 100
+          stp-priority: 32`)).build(),
+			expected: "",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			//Build default wrapping installConfig
+			// Build default wrapping installConfig
 			if tc.config == nil {
 				tc.config = installConfig().build()
 				tc.config.BareMetal = tc.platform
 			}
 
-			err := ValidatePlatform(tc.config.BareMetal, network(), field.NewPath("baremetal"), tc.config).ToAggregate()
+			err := ValidatePlatform(tc.config.BareMetal, false, network(), field.NewPath("baremetal"), tc.config).ToAggregate()
 
 			if tc.expected == "" {
 				assert.NoError(t, err)
 			} else {
 				assert.Regexp(t, tc.expected, err)
+			}
+		})
+	}
+}
+
+func TestValidateHostRootDeviceHints(t *testing.T) {
+	cases := []struct {
+		name            string
+		rootDeviceHints *baremetal.RootDeviceHints
+		expectedSuccess bool
+	}{
+		{
+			name:            "nil hints",
+			expectedSuccess: true,
+		},
+		{
+			name:            "no hints",
+			rootDeviceHints: &baremetal.RootDeviceHints{},
+			expectedSuccess: true,
+		},
+		{
+			name: "non /dev path",
+			rootDeviceHints: &baremetal.RootDeviceHints{
+				DeviceName: "sda",
+			},
+		},
+		{
+			name: "/dev path",
+			rootDeviceHints: &baremetal.RootDeviceHints{
+				DeviceName: "/dev/sda",
+			},
+			expectedSuccess: true,
+		},
+		{
+			name: "by-path path",
+			rootDeviceHints: &baremetal.RootDeviceHints{
+				DeviceName: "/dev/disk/by-path/pci-0000:01:00.0-scsi-0:2:0:0",
+			},
+			expectedSuccess: true,
+		},
+		{
+			name: "by-id path",
+			rootDeviceHints: &baremetal.RootDeviceHints{
+				DeviceName: "/dev/disk/by-id/wwn-0x600508e000000000ce506dc50ab0ad05",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := ValidateHostRootDeviceHints(tc.rootDeviceHints, field.NewPath("rootDeviceHints"))
+
+			if tc.expectedSuccess {
+				assert.Empty(t, errs)
+			} else {
+				assert.NotEmpty(t, errs)
 			}
 		})
 	}
@@ -342,15 +595,10 @@ func TestValidateProvisioning(t *testing.T) {
 			expected: "Invalid value: \"192.168.128.1\": \"192.168.128.1\" is not in the provisioning network",
 		},
 		{
-			name:     "invalid_provisioning_network_overlapping_CIDR",
-			platform: platform().ProvisioningNetworkCIDR("192.168.111.192/23").build(),
-			expected: "Invalid value: \"192.168.111.192/23\": cannot overlap with machine network: 192.168.111.0/24 overlaps with 192.168.111.192/23",
-		},
-		{
-			name: "invalid_provisioning_interface",
+			name: "invalid_provisioning_network_overlapping_CIDR",
 			platform: platform().
-				ProvisioningNetworkInterface("").build(),
-			expected: "Invalid value: \"\": no provisioning network interface is configured, please set this value to be the interface on the provisioning network on your cluster's baremetal hosts",
+				ProvisioningNetworkCIDR("192.168.110.0/23").build(),
+			expected: "Invalid value: \"192.168.110.0/23\": cannot overlap with machine network: 192.168.111.0/24 overlaps with 192.168.110.0/23",
 		},
 		{
 			name: "valid_provisioningDHCPRange",
@@ -393,6 +641,56 @@ func TestValidateProvisioning(t *testing.T) {
 				LibvirtURI("bad").build(),
 			expected: "invalid URI \"bad\"",
 		},
+		{
+			name:     "valid_provisioning_network_ipv4",
+			platform: platform().ProvisioningNetworkCIDR("172.22.0.0/24").build(),
+			expected: "",
+		},
+		{
+			name:     "invalid_provisioning_network_need_network_address",
+			platform: platform().ProvisioningNetworkCIDR("172.22.0.2/24").build(),
+			expected: "provisioningNetworkCIDR has host bits set, expected 172.22.0.0/24",
+		},
+		{
+			name: "valid_provisioning_network_ipv6",
+			platform: platform().
+				ProvisioningNetworkCIDR("fd00:0111:0::/64").
+				ClusterProvisioningIP("fd00:0111::3").
+				BootstrapProvisioningIP("fd00:0111::2").build(),
+			expected: "",
+		},
+		{
+			name: "valid_provisioning_network_ipv6_long",
+			platform: platform().
+				ProvisioningNetworkCIDR("fd00:0111:0000:0000:0000:0000:0000:0000/64").
+				ClusterProvisioningIP("fd00:0111:0000:0000:0000:0000:0000:0003").
+				BootstrapProvisioningIP("fd00:0111:0000:0000:0000:0000:0000:0002").build(),
+			expected: "",
+		},
+		{
+			name: "valid_provisioning_network_ipv6_mixed",
+			platform: platform().
+				ProvisioningNetworkCIDR("fd00:0111::/64").
+				ClusterProvisioningIP("fd00:0111:0000:0000:0000:0000:0000:0003").
+				BootstrapProvisioningIP("fd00:0111:0000:0000:0000:0000:0000:0002").build(),
+			expected: "",
+		},
+		{
+			name: "invalid_provisioning_network_need_network_address_ipv6",
+			platform: platform().
+				ProvisioningNetworkCIDR("fd00:0111:0::1/64").
+				ClusterProvisioningIP("fd00:0111::3").
+				BootstrapProvisioningIP("fd00:0111::2").build(),
+			expected: "provisioningNetworkCIDR has host bits set, expected fd00:111::/64",
+		},
+		{
+			name: "ipv6_CIDR_too_large",
+			platform: platform().
+				ProvisioningNetworkCIDR("fd2e:6f44:5dd8:b856::/32").
+				ClusterProvisioningIP("fd2e:6f44:5dd8:b856::3").
+				BootstrapProvisioningIP("fd2e:6f44:5dd8:b856::2").build(),
+			expected: "provisioningNetworkCIDR mask must be greater than or equal to 64 for IPv6 networks",
+		},
 
 		// Disabled provisioning network
 		{
@@ -429,11 +727,22 @@ func TestValidateProvisioning(t *testing.T) {
 				ClusterProvisioningIP("192.168.0.2").build(),
 			expected: "Invalid value: \"192.168.0.2\": provisioning network is disabled, IP expected to be in one of the machine networks: 192.168.111.0/24",
 		},
+		{
+			name:   "not_supported_bmc_driver_provisioning_network_disabled",
+			config: installConfig().Network(networking().Network("192.168.111.0/24")).build(),
+			platform: platform().
+				ProvisioningNetwork(baremetal.DisabledProvisioningNetwork).
+				ClusterProvisioningIP("192.168.111.2").
+				BootstrapProvisioningIP("192.168.111.3").
+				Hosts(host1().BMCAddress("ipmi://192.168.111.1")).
+				build(),
+			expected: "baremetal.Hosts\\[0\\].BMC: Invalid value: \"ipmi://192.168.111.1\": driver ipmi requires provisioning network",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			//Build default wrapping installConfig
+			// Build default wrapping installConfig
 			if tc.config == nil {
 				tc.config = installConfig().build()
 			}
@@ -484,6 +793,48 @@ func host2() *hostBuilder {
 	}
 }
 
+func host3() *hostBuilder {
+	return &hostBuilder{
+		baremetal.Host{
+			Name:           "host3",
+			BootMACAddress: "CA:FE:CA:FE:00:02",
+			BMC: baremetal.BMC{
+				Username: "root",
+				Password: "password",
+				Address:  "ipmi://192.168.111.3",
+			},
+		},
+	}
+}
+
+func host4() *hostBuilder {
+	return &hostBuilder{
+		baremetal.Host{
+			Name:           "host4",
+			BootMACAddress: "CA:FE:CA:FE:00:03",
+			BMC: baremetal.BMC{
+				Username: "root",
+				Password: "password",
+				Address:  "ipmi://192.168.111.4",
+			},
+		},
+	}
+}
+
+func host5() *hostBuilder {
+	return &hostBuilder{
+		baremetal.Host{
+			Name:           "host5",
+			BootMACAddress: "CA:FE:CA:FE:00:04",
+			BMC: baremetal.BMC{
+				Username: "root",
+				Password: "password",
+				Address:  "ipmi://192.168.111.5",
+			},
+		},
+	}
+}
+
 func (hb *hostBuilder) build() *baremetal.Host {
 	return &hb.Host
 }
@@ -518,6 +869,16 @@ func (hb *hostBuilder) BMCPassword(value string) *hostBuilder {
 	return hb
 }
 
+func (hb *hostBuilder) Role(value string) *hostBuilder {
+	hb.Host.Role = value
+	return hb
+}
+
+func (hb *hostBuilder) NetworkConfig(value string) *hostBuilder {
+	yaml.Unmarshal([]byte(value), &hb.Host.NetworkConfig)
+	return hb
+}
+
 type platformBuilder struct {
 	baremetal.Platform
 }
@@ -525,8 +886,8 @@ type platformBuilder struct {
 func platform() *platformBuilder {
 	return &platformBuilder{
 		baremetal.Platform{
-			APIVIP:                       "192.168.111.2",
-			IngressVIP:                   "192.168.111.4",
+			APIVIPs:                      []string{"192.168.111.2"},
+			IngressVIPs:                  []string{"192.168.111.4"},
 			Hosts:                        []*baremetal.Host{},
 			LibvirtURI:                   "qemu://system",
 			ProvisioningNetworkCIDR:      ipnet.MustParseCIDR("172.22.0.0/24"),
@@ -578,20 +939,17 @@ func (pb *platformBuilder) ProvisioningDHCPRange(value string) *platformBuilder 
 	return pb
 }
 
-func (pb *platformBuilder) APIVIP(value string) *platformBuilder {
-	pb.Platform.APIVIP = value
-	return pb
-}
-
-func (pb *platformBuilder) IngressVIP(value string) *platformBuilder {
-	pb.Platform.IngressVIP = value
-	return pb
-}
-
 func (pb *platformBuilder) Hosts(builders ...*hostBuilder) *platformBuilder {
 	pb.Platform.Hosts = nil
 	for _, builder := range builders {
 		pb.Platform.Hosts = append(pb.Platform.Hosts, builder.build())
+	}
+	return pb
+}
+
+func (pb *platformBuilder) LoadBalancerType(value string) *platformBuilder {
+	pb.Platform.LoadBalancer = &configv1.BareMetalPlatformLoadBalancer{
+		Type: configv1.PlatformLoadBalancerType(value),
 	}
 	return pb
 }
@@ -648,6 +1006,11 @@ func (icb *installConfigBuilder) BareMetalPlatform(builder *platformBuilder) *in
 	icb.InstallConfig.Platform = types.Platform{
 		BareMetal: builder.build(),
 	}
+	return icb
+}
+
+func (icb *installConfigBuilder) FeatureSet(value configv1.FeatureSet) *installConfigBuilder {
+	icb.InstallConfig.FeatureSet = value
 	return icb
 }
 

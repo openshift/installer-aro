@@ -1,23 +1,26 @@
 package gcp
 
 import (
-	"github.com/pkg/errors"
+	"context"
 
-	compute "google.golang.org/api/compute/v1"
+	"github.com/pkg/errors"
+	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
+
+	"github.com/openshift/installer/pkg/types/gcp"
 )
 
-func (o *ClusterUninstaller) listImages() ([]cloudResource, error) {
-	return o.listImagesWithFilter("items(name),nextPageToken", o.clusterIDFilter(), nil)
+func (o *ClusterUninstaller) listImages(ctx context.Context) ([]cloudResource, error) {
+	return o.listImagesWithFilter(ctx, "items(name),nextPageToken", o.clusterIDFilter(), nil)
 }
 
 // listImagesWithFilter lists addresses in the project that satisfy the filter criteria.
 // The fields parameter specifies which fields should be returned in the result, the filter string contains
 // a filter string passed to the API to filter results. The filterFunc is a client-side filtering function
 // that determines whether a particular result should be returned or not.
-func (o *ClusterUninstaller) listImagesWithFilter(fields string, filter string, filterFunc func(*compute.Image) bool) ([]cloudResource, error) {
+func (o *ClusterUninstaller) listImagesWithFilter(ctx context.Context, fields string, filter string, filterFunc func(*compute.Image) bool) ([]cloudResource, error) {
 	o.Logger.Debugf("Listing images")
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	result := []cloudResource{}
 	req := o.computeSvc.Images.List(o.ProjectID).Fields(googleapi.Field(fields))
@@ -32,6 +35,13 @@ func (o *ClusterUninstaller) listImagesWithFilter(fields string, filter string, 
 					key:      item.Name,
 					name:     item.Name,
 					typeName: "image",
+					quota: []gcp.QuotaUsage{{
+						Metric: &gcp.Metric{
+							Service: gcp.ServiceComputeEngineAPI,
+							Limit:   "images",
+						},
+						Amount: 1,
+					}},
 				})
 			}
 		}
@@ -43,9 +53,9 @@ func (o *ClusterUninstaller) listImagesWithFilter(fields string, filter string, 
 	return result, nil
 }
 
-func (o *ClusterUninstaller) deleteImage(item cloudResource) error {
+func (o *ClusterUninstaller) deleteImage(ctx context.Context, item cloudResource) error {
 	o.Logger.Debugf("Deleting image %s", item.name)
-	ctx, cancel := o.contextWithTimeout()
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	op, err := o.computeSvc.Images.Delete(o.ProjectID, item.name).Context(ctx).RequestId(o.requestID(item.typeName, item.name)).Do()
 	if err != nil && !isNoOp(err) {
@@ -66,14 +76,14 @@ func (o *ClusterUninstaller) deleteImage(item cloudResource) error {
 
 // destroyImages removes all image resources with a name prefixed
 // with the cluster's infra ID.
-func (o *ClusterUninstaller) destroyImages() error {
-	found, err := o.listImages()
+func (o *ClusterUninstaller) destroyImages(ctx context.Context) error {
+	found, err := o.listImages(ctx)
 	if err != nil {
 		return err
 	}
 	items := o.insertPendingItems("image", found)
 	for _, item := range items {
-		err := o.deleteImage(item)
+		err := o.deleteImage(ctx, item)
 		if err != nil {
 			o.errorTracker.suppressWarning(item.key, err, o.Logger)
 		}

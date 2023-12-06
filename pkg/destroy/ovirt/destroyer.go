@@ -2,6 +2,7 @@ package ovirt
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,10 +21,10 @@ type ClusterUninstaller struct {
 }
 
 // Run is the entrypoint to start the uninstall process.
-func (uninstaller *ClusterUninstaller) Run() error {
+func (uninstaller *ClusterUninstaller) Run() (*types.ClusterQuota, error) {
 	con, err := ovirt.NewConnection()
 	if err != nil {
-		return fmt.Errorf("failed to initialize connection to ovirt-engine's %s", err)
+		return nil, fmt.Errorf("failed to initialize connection to ovirt-engine's %s", err)
 	}
 	defer con.Close()
 
@@ -43,8 +44,11 @@ func (uninstaller *ClusterUninstaller) Run() error {
 	if err := uninstaller.removeTemplate(con); err != nil {
 		uninstaller.Logger.Errorf("Failed to remove template: %s", err)
 	}
+	if err := uninstaller.removeAffinityGroups(con); err != nil {
+		uninstaller.Logger.Errorf("Failed to removing Affinity Groups: %s", err)
+	}
 
-	return nil
+	return nil, nil
 }
 
 func (uninstaller *ClusterUninstaller) removeVMs(con *ovirtsdk.Connection, tag string) error {
@@ -138,6 +142,25 @@ func (uninstaller *ClusterUninstaller) removeTemplate(con *ovirtsdk.Connection) 
 				if err != nil {
 					return err
 				}
+			}
+		}
+	}
+	return nil
+}
+
+func (uninstaller *ClusterUninstaller) removeAffinityGroups(con *ovirtsdk.Connection) error {
+	cID := uninstaller.Metadata.Ovirt.ClusterID
+	affinityGroupService := con.SystemService().ClustersService().ClusterService(cID).AffinityGroupsService()
+	res, err := affinityGroupService.List().Send()
+	if err != nil {
+		return err
+	}
+	for _, ag := range res.MustGroups().Slice() {
+		if strings.HasPrefix(ag.MustName(), fmt.Sprintf("%s-", uninstaller.Metadata.InfraID)) {
+			uninstaller.Logger.Infof("Removing AffinityGroup %s", ag.MustName())
+			_, err := affinityGroupService.GroupService(ag.MustId()).Remove().Send()
+			if err != nil {
+				uninstaller.Logger.Errorf("failed to remove AffinityGroup: %s", err)
 			}
 		}
 	}

@@ -21,8 +21,8 @@ $ openshift-install create install-config
 ### Optional: Create Encrypted AMIs
 
 The IPI-based installer creates an encrypted AMI by default. If you wish to have an encrypted AMI for UPI-based
-installs, you will need to create it directly. You can find a list of the appropriate base AMIs 
-[here](../../../data/data/rhcos.json).
+installs, you will need to create it directly.  See [CoreOS bootimages](../overview.md#coreos-bootimages) for more information
+about bootimages, including how to find the AMI identifiers.
 
 You will make an encrypted copy of the AMI according to the [AWS documentation][encrypted-copy].
 
@@ -57,7 +57,7 @@ INFO Consuming "Install Config" from target directory
 Remove the control-plane Machines and compute MachineSets, because we'll be providing those ourselves and don't want to involve [the machine-API operator][machine-api-operator]:
 
 ```console
-$ rm -f openshift/99_openshift-cluster-api_master-machines-*.yaml openshift/99_openshift-cluster-api_worker-machineset-*.yaml
+$ rm -f openshift/99_openshift-cluster-api_master-machines-*.yaml openshift/99_openshift-cluster-api_worker-machineset-*.yaml 99_openshift-machine-api_master-control-plane-machine-set.yaml
 ```
 
 You are free to leave the compute MachineSets in if you want to create compute machines via the machine API, but if you do you may need to update the various references (`subnet`, etc.) to match your environment.
@@ -113,6 +113,10 @@ open(path, "w").write(yaml.dump(data, default_flow_style=False))'
 ```
 
 If you do so, you'll need to [add ingress DNS records manually](#add-the-ingress-dns-records) later on.
+
+#### Disconnected clusters
+
+For disconnected clusters, Openshift has to be configured [not to manage DNS](#remove-dns-zones), otherwise [the ingress operator][ingress-operator] will try to contact the STS endpoint "sts.amazon.com" directly as opposed to the configured VPC endpoint for the cluster.
 
 ## Create Ignition Configs
 

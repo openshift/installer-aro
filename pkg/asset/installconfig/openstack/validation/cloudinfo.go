@@ -1,109 +1,127 @@
 package validation
 
 import (
+	"errors"
+	"fmt"
 	"net/url"
-	"os"
-	"strings"
 
 	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/availabilityzones"
+	"github.com/gophercloud/gophercloud/openstack/blockstorage/extensions/availabilityzones"
+	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumetypes"
+	"github.com/gophercloud/gophercloud/openstack/common/extensions"
 	computequotasets "github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	tokensv2 "github.com/gophercloud/gophercloud/openstack/identity/v2/tokens"
 	tokensv3 "github.com/gophercloud/gophercloud/openstack/identity/v3/tokens"
 	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
+	networkquotasets "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/quotas"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"github.com/gophercloud/utils/openstack/clientconfig"
+	azutils "github.com/gophercloud/utils/openstack/compute/v2/availabilityzones"
 	flavorutils "github.com/gophercloud/utils/openstack/compute/v2/flavors"
 	imageutils "github.com/gophercloud/utils/openstack/imageservice/v2/images"
 	networkutils "github.com/gophercloud/utils/openstack/networking/v2/networks"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/openshift/installer/pkg/quota"
 	"github.com/openshift/installer/pkg/types"
+	"github.com/openshift/installer/pkg/types/openstack"
+	openstackdefaults "github.com/openshift/installer/pkg/types/openstack/defaults"
+	"github.com/openshift/installer/pkg/types/openstack/validation/networkextensions"
 )
 
 // CloudInfo caches data fetched from the user's openstack cloud
 type CloudInfo struct {
-	APIFIP          *floatingips.FloatingIP
-	ExternalNetwork *networks.Network
-	Flavors         map[string]Flavor
-	IngressFIP      *floatingips.FloatingIP
-	MachinesSubnet  *subnets.Subnet
-	OSImage         *images.Image
-	Zones           []string
-	Quotas          []quota.Quota
+	APIFIP                  *floatingips.FloatingIP
+	ExternalNetwork         *networks.Network
+	Flavors                 map[string]Flavor
+	IngressFIP              *floatingips.FloatingIP
+	ControlPlanePortSubnets []*subnets.Subnet
+	ControlPlanePortNetwork *networks.Network
+	OSImage                 *images.Image
+	ComputeZones            []string
+	VolumeZones             []string
+	VolumeTypes             []string
+	NetworkExtensions       []extensions.Extension
+	Quotas                  []quota.Quota
 
 	clients *clients
 }
 
 type clients struct {
-	networkClient *gophercloud.ServiceClient
-	computeClient *gophercloud.ServiceClient
-	imageClient   *gophercloud.ServiceClient
+	networkClient  *gophercloud.ServiceClient
+	computeClient  *gophercloud.ServiceClient
+	imageClient    *gophercloud.ServiceClient
+	identityClient *gophercloud.ServiceClient
+	volumeClient   *gophercloud.ServiceClient
 }
 
 // Flavor embeds information from the Gophercloud Flavor struct and adds
 // information on whether a flavor is of baremetal type.
 type Flavor struct {
-	*flavors.Flavor
+	flavors.Flavor
 	Baremetal bool
 }
 
-// record stores the data from quota limits and usages.
-type record struct {
-	Service string
-	Name    string
-	Value   int64
-}
+var ci *CloudInfo
 
 // GetCloudInfo fetches and caches metadata from openstack
 func GetCloudInfo(ic *types.InstallConfig) (*CloudInfo, error) {
 	var err error
-	ci := CloudInfo{
+
+	if ci != nil {
+		return ci, nil
+	}
+
+	ci = &CloudInfo{
 		clients: &clients{},
 		Flavors: map[string]Flavor{},
 	}
 
-	opts := &clientconfig.ClientOpts{Cloud: ic.OpenStack.Cloud}
+	opts := openstackdefaults.DefaultClientOpts(ic.OpenStack.Cloud)
 
-	// We should unset OS_CLOUD env variable here, because the real cloud name was
-	// defined on the previous step. OS_CLOUD has more priority, so the value from
-	// "opts" variable will be ignored if OS_CLOUD contains something.
-	os.Unsetenv("OS_CLOUD")
-
-	ci.clients.networkClient, err = clientconfig.NewServiceClient("network", opts)
+	ci.clients.networkClient, err = openstackdefaults.NewServiceClient("network", opts)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create a network client")
+		return nil, fmt.Errorf("failed to create a network client: %w", err)
 	}
 
-	ci.clients.computeClient, err = clientconfig.NewServiceClient("compute", opts)
+	ci.clients.computeClient, err = openstackdefaults.NewServiceClient("compute", opts)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create a compute client")
+		return nil, fmt.Errorf("failed to create a compute client: %w", err)
 	}
 
-	ci.clients.imageClient, err = clientconfig.NewServiceClient("image", opts)
+	ci.clients.imageClient, err = openstackdefaults.NewServiceClient("image", opts)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create an image client")
+		return nil, fmt.Errorf("failed to create an image client: %w", err)
+	}
+
+	ci.clients.identityClient, err = openstackdefaults.NewServiceClient("identity", opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create an identity client: %w", err)
+	}
+
+	ci.clients.volumeClient, err = openstackdefaults.NewServiceClient("volume", opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create a volume client: %w", err)
 	}
 
 	err = ci.collectInfo(ic, opts)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate OpenStack cloud info")
+		logrus.Warnf("Failed to generate OpenStack cloud info: %v", err)
+		return nil, nil
 	}
 
-	return &ci, nil
+	return ci, nil
 }
 
 func (ci *CloudInfo) collectInfo(ic *types.InstallConfig, opts *clientconfig.ClientOpts) error {
 	var err error
 
-	ci.ExternalNetwork, err = ci.getNetwork(ic.OpenStack.ExternalNetwork)
+	ci.ExternalNetwork, err = ci.getNetworkByName(ic.OpenStack.ExternalNetwork)
 	if err != nil {
-		return errors.Wrap(err, "failed to fetch external network info")
+		return fmt.Errorf("failed to fetch external network info: %w", err)
 	}
 
 	// Fetch the image info if the user provided a Glance image name
@@ -121,9 +139,12 @@ func (ci *CloudInfo) collectInfo(ic *types.InstallConfig, opts *clientconfig.Cli
 	if ic.Platform.OpenStack.DefaultMachinePlatform != nil {
 		if flavorName := ic.Platform.OpenStack.DefaultMachinePlatform.FlavorName; flavorName != "" {
 			if _, seen := ci.Flavors[flavorName]; !seen {
-				ci.Flavors[flavorName], err = ci.getFlavor(flavorName)
-				if err != nil {
-					return err
+				flavor, err := ci.getFlavor(flavorName)
+				if !isNotFoundError(err) {
+					if err != nil {
+						return err
+					}
+					ci.Flavors[flavorName] = flavor
 				}
 			}
 		}
@@ -132,9 +153,12 @@ func (ci *CloudInfo) collectInfo(ic *types.InstallConfig, opts *clientconfig.Cli
 	if ic.ControlPlane != nil && ic.ControlPlane.Platform.OpenStack != nil {
 		if flavorName := ic.ControlPlane.Platform.OpenStack.FlavorName; flavorName != "" {
 			if _, seen := ci.Flavors[flavorName]; !seen {
-				ci.Flavors[flavorName], err = ci.getFlavor(flavorName)
-				if err != nil {
-					return err
+				flavor, err := ci.getFlavor(flavorName)
+				if !isNotFoundError(err) {
+					if err != nil {
+						return err
+					}
+					ci.Flavors[flavorName] = flavor
 				}
 			}
 		}
@@ -144,18 +168,27 @@ func (ci *CloudInfo) collectInfo(ic *types.InstallConfig, opts *clientconfig.Cli
 		if machine.Platform.OpenStack != nil {
 			if flavorName := machine.Platform.OpenStack.FlavorName; flavorName != "" {
 				if _, seen := ci.Flavors[flavorName]; !seen {
-					ci.Flavors[flavorName], err = ci.getFlavor(flavorName)
-					if err != nil {
-						return err
+					flavor, err := ci.getFlavor(flavorName)
+					if !isNotFoundError(err) {
+						if err != nil {
+							return err
+						}
+						ci.Flavors[flavorName] = flavor
 					}
 				}
 			}
 		}
 	}
-
-	ci.MachinesSubnet, err = ci.getSubnet(ic.OpenStack.MachinesSubnet)
-	if err != nil {
-		return errors.Wrap(err, "failed to fetch machine subnet info")
+	if ic.OpenStack.ControlPlanePort != nil {
+		controlPlanePort := ic.OpenStack.ControlPlanePort
+		ci.ControlPlanePortSubnets, err = ci.getSubnets(controlPlanePort)
+		if err != nil {
+			return err
+		}
+		ci.ControlPlanePortNetwork, err = ci.getNetwork(controlPlanePort.Network.Name, controlPlanePort.Network.ID)
+		if err != nil {
+			return err
+		}
 	}
 
 	ci.APIFIP, err = ci.getFloatingIP(ic.OpenStack.APIFloatingIP)
@@ -168,50 +201,71 @@ func (ci *CloudInfo) collectInfo(ic *types.InstallConfig, opts *clientconfig.Cli
 		return err
 	}
 
-	ci.Zones, err = ci.getZones()
+	ci.ComputeZones, err = ci.getComputeZones()
 	if err != nil {
 		return err
 	}
 
-	ci.Quotas, err = loadQuotas(opts)
-	if isUnauthorized(err) {
-		logrus.Warnf("Missing permissions to fetch Quotas and therefore will skip checking them: %v", err)
-		return nil
-	}
+	ci.VolumeZones, err = ci.getVolumeZones()
 	if err != nil {
-		return errors.Wrap(err, "failed to load Quota")
+		return err
+	}
+
+	ci.VolumeTypes, err = ci.getVolumeTypes()
+	if err != nil {
+		return err
+	}
+
+	ci.Quotas, err = loadQuotas(ci)
+	if err != nil {
+		if isUnauthorized(err) {
+			logrus.Warnf("Missing permissions to fetch Quotas and therefore will skip checking them: %v", err)
+		} else if isNotFoundError(err) {
+			logrus.Warnf("Quota API is not available and therefore will skip checking them: %v", err)
+		} else {
+			return fmt.Errorf("failed to load Quota: %w", err)
+		}
+	}
+
+	ci.NetworkExtensions, err = networkextensions.Get(ci.clients.networkClient)
+	if err != nil {
+		return fmt.Errorf("failed to fetch network extensions: %w", err)
 	}
 
 	return nil
 }
-
-func (ci *CloudInfo) getSubnet(subnetID string) (*subnets.Subnet, error) {
-	if subnetID == "" {
-		return nil, nil
-	}
-	subnet, err := subnets.Get(ci.clients.networkClient, subnetID).Extract()
-	if err != nil {
-		var gerr *gophercloud.ErrResourceNotFound
-		if errors.As(err, &gerr) {
-			return nil, nil
+func (ci *CloudInfo) getSubnets(controlPlanePort *openstack.PortTarget) ([]*subnets.Subnet, error) {
+	controlPlaneSubnets := make([]*subnets.Subnet, 0, len(controlPlanePort.FixedIPs))
+	for _, fixedIP := range controlPlanePort.FixedIPs {
+		page, err := subnets.List(ci.clients.networkClient, subnets.ListOpts{ID: fixedIP.Subnet.ID, Name: fixedIP.Subnet.Name}).AllPages()
+		if err != nil {
+			return controlPlaneSubnets, err
 		}
-		return nil, err
+		subnetList, err := subnets.ExtractSubnets(page)
+		if err != nil {
+			return controlPlaneSubnets, err
+		}
+		if len(subnetList) == 1 {
+			controlPlaneSubnets = append(controlPlaneSubnets, &subnetList[0])
+		} else if len(subnetList) > 1 {
+			return controlPlaneSubnets, fmt.Errorf("found multiple subnets")
+		}
 	}
-
-	return subnet, nil
+	return controlPlaneSubnets, nil
 }
 
 func isNotFoundError(err error) bool {
-	var errNotFound *gophercloud.ErrResourceNotFound
-	return errors.As(err, &errNotFound) || strings.Contains(err.Error(), "Resource not found")
+	var errNotFound gophercloud.ErrResourceNotFound
+	var pErrNotFound *gophercloud.ErrResourceNotFound
+	var errDefault404 gophercloud.ErrDefault404
+	var pErrDefault404 *gophercloud.ErrDefault404
+
+	return errors.As(err, &errNotFound) || errors.As(err, &pErrNotFound) || errors.As(err, &errDefault404) || errors.As(err, &pErrDefault404)
 }
 
 func (ci *CloudInfo) getFlavor(flavorName string) (Flavor, error) {
 	flavorID, err := flavorutils.IDFromName(ci.clients.computeClient, flavorName)
 	if err != nil {
-		if isNotFoundError(err) {
-			return Flavor{}, nil
-		}
 		return Flavor{}, err
 	}
 
@@ -234,20 +288,22 @@ func (ci *CloudInfo) getFlavor(flavorName string) (Flavor, error) {
 		}
 	}
 
+	// NOTE(mdbooth): The dereference of flavor is safe here because
+	// flavors.Get().Extract() should have raised an error above if the flavor
+	// was not found.
 	return Flavor{
-		Flavor:    flavor,
+		Flavor:    *flavor,
 		Baremetal: baremetal,
 	}, nil
 }
 
-func (ci *CloudInfo) getNetwork(networkName string) (*networks.Network, error) {
+func (ci *CloudInfo) getNetworkByName(networkName string) (*networks.Network, error) {
 	if networkName == "" {
 		return nil, nil
 	}
 	networkID, err := networkutils.IDFromName(ci.clients.networkClient, networkName)
 	if err != nil {
-		var gerr *gophercloud.ErrResourceNotFound
-		if errors.As(err, &gerr) {
+		if isNotFoundError(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -259,6 +315,30 @@ func (ci *CloudInfo) getNetwork(networkName string) (*networks.Network, error) {
 	}
 
 	return network, nil
+}
+
+func (ci *CloudInfo) getNetwork(networkName, networkID string) (*networks.Network, error) {
+	opts := networks.ListOpts{
+		ID:   networkID,
+		Name: networkName,
+	}
+	allPages, err := networks.List(ci.clients.networkClient, opts).AllPages()
+	if err != nil {
+		return nil, err
+	}
+
+	allNetworks, err := networks.ExtractNetworks(allPages)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allNetworks) == 0 {
+		return nil, nil
+	} else if len(allNetworks) > 1 {
+		return nil, fmt.Errorf("found multiple networks")
+	}
+
+	return &allNetworks[0], nil
 }
 
 func (ci *CloudInfo) getFloatingIP(fip string) (*floatingips.FloatingIP, error) {
@@ -287,8 +367,7 @@ func (ci *CloudInfo) getFloatingIP(fip string) (*floatingips.FloatingIP, error) 
 func (ci *CloudInfo) getImage(imageName string) (*images.Image, error) {
 	imageID, err := imageutils.IDFromName(ci.clients.imageClient, imageName)
 	if err != nil {
-		var gerr *gophercloud.ErrResourceNotFound
-		if errors.As(err, &gerr) {
+		if isNotFoundError(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -302,138 +381,166 @@ func (ci *CloudInfo) getImage(imageName string) (*images.Image, error) {
 	return image, nil
 }
 
-func (ci *CloudInfo) getZones() ([]string, error) {
-	zones := []string{}
-	allPages, err := availabilityzones.List(ci.clients.computeClient).AllPages()
+func (ci *CloudInfo) getComputeZones() ([]string, error) {
+	zones, err := azutils.ListAvailableAvailabilityZones(ci.clients.computeClient)
 	if err != nil {
-		return nil, err
-	}
-
-	availabilityZoneInfo, err := availabilityzones.ExtractAvailabilityZones(allPages)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, zoneInfo := range availabilityZoneInfo {
-		if zoneInfo.ZoneState.Available {
-			zones = append(zones, zoneInfo.ZoneName)
-		}
+		return nil, fmt.Errorf("failed to list compute availability zones: %w", err)
 	}
 
 	if len(zones) == 0 {
-		return nil, errors.New("could not find an available compute availability zone")
+		return nil, fmt.Errorf("could not find an available compute availability zone")
 	}
 
 	return zones, nil
 }
 
-// loadLimits loads the consumer quota metric.
-func loadLimits(opts *clientconfig.ClientOpts) ([]record, error) {
-	var limits []record
-
-	projectID, err := getProjectID(opts)
+func (ci *CloudInfo) getVolumeZones() ([]string, error) {
+	allPages, err := availabilityzones.List(ci.clients.volumeClient).AllPages()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get keystone project ID")
+		return nil, fmt.Errorf("failed to list volume availability zones: %w", err)
 	}
 
-	computeRecords, err := getComputeLimits(opts, projectID)
+	availabilityZoneInfo, err := availabilityzones.ExtractAvailabilityZones(allPages)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get compute quota records")
-	}
-	for _, r := range computeRecords {
-		limits = append(limits, r)
+		return nil, fmt.Errorf("failed to parse response with volume availability zone list: %w", err)
 	}
 
-	return limits, nil
+	if len(availabilityZoneInfo) == 0 {
+		return nil, fmt.Errorf("could not find an available volume availability zone")
+	}
+
+	var zones []string
+	for _, zone := range availabilityZoneInfo {
+		if zone.ZoneState.Available {
+			zones = append(zones, zone.ZoneName)
+		}
+	}
+
+	return zones, nil
 }
 
-func getComputeLimits(opts *clientconfig.ClientOpts, projectID string) ([]record, error) {
-	computeClient, err := clientconfig.NewServiceClient("compute", opts)
+func (ci *CloudInfo) getVolumeTypes() ([]string, error) {
+	allPages, err := volumetypes.List(ci.clients.volumeClient, volumetypes.ListOpts{}).AllPages()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to connect against OpenStack Comute v2 API")
-	}
-	qs, err := computequotasets.GetDetail(computeClient, projectID).Extract()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get QuotaSets from OpenStack Compute API")
+		return nil, fmt.Errorf("failed to list volume types: %w", err)
 	}
 
-	var records []record
-	addRecord := func(name string, quota computequotasets.QuotaDetail) {
-		qval := int64(quota.Limit - quota.InUse - quota.Reserved)
-		// -1 means unlimited in OpenStack so we will ignore that record.
-		if quota.Limit == -1 {
-			qval = -1
-		}
-		records = append(records, record{
-			Service: "compute",
-			Name:    name,
-			Value:   qval,
+	volumeTypeInfo, err := volumetypes.ExtractVolumeTypes(allPages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse response with volume types list: %w", err)
+	}
+
+	if len(volumeTypeInfo) == 0 {
+		return nil, fmt.Errorf("could not find an available block storage volume type")
+	}
+
+	var types []string
+	for _, volumeType := range volumeTypeInfo {
+		types = append(types, volumeType.Name)
+	}
+
+	return types, nil
+}
+
+// loadQuotas loads the quota information for a project and provided services. It provides information
+// about the usage and limit for each resource quota.
+func loadQuotas(ci *CloudInfo) ([]quota.Quota, error) {
+	var quotas []quota.Quota
+
+	projectID, err := getProjectID(ci)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get keystone project ID: %w", err)
+	}
+
+	computeRecords, err := getComputeLimits(ci, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get compute quota records: %w", err)
+	}
+	quotas = append(quotas, computeRecords...)
+
+	networkRecords, err := getNetworkLimits(ci, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network quota records: %w", err)
+	}
+	quotas = append(quotas, networkRecords...)
+
+	return quotas, nil
+}
+
+func getComputeLimits(ci *CloudInfo, projectID string) ([]quota.Quota, error) {
+	qs, err := computequotasets.GetDetail(ci.clients.computeClient, projectID).Extract()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get QuotaSets from OpenStack Compute API: %w", err)
+	}
+
+	var quotas []quota.Quota
+	addQuota := func(name string, quotaDetail computequotasets.QuotaDetail) {
+		quotas = append(quotas, quota.Quota{
+			Service:   "compute",
+			Name:      name,
+			InUse:     int64(quotaDetail.InUse),
+			Limit:     int64(quotaDetail.Limit - quotaDetail.Reserved),
+			Unlimited: quotaDetail.Limit < 0,
 		})
 	}
-	addRecord("Cores", qs.Cores)
-	addRecord("Instances", qs.Instances)
-	addRecord("RAM", qs.RAM)
+	addQuota("Cores", qs.Cores)
+	addQuota("Instances", qs.Instances)
+	addQuota("RAM", qs.RAM)
 
-	return records, nil
+	return quotas, nil
 }
 
-func getProjectID(opts *clientconfig.ClientOpts) (string, error) {
-	keystoneClient, err := clientconfig.NewServiceClient("identity", opts)
+func getNetworkLimits(ci *CloudInfo, projectID string) ([]quota.Quota, error) {
+	qs, err := networkquotasets.GetDetail(ci.clients.networkClient, projectID).Extract()
 	if err != nil {
-		return "", errors.Wrap(err, "failed to conect against OpenStack Keystone API")
+		return nil, fmt.Errorf("failed to get QuotaSets from OpenStack Network API: %w", err)
 	}
-	authResult := keystoneClient.GetAuthResult()
+
+	var quotas []quota.Quota
+	addQuota := func(name string, quotaDetail networkquotasets.QuotaDetail) {
+		quotas = append(quotas, quota.Quota{
+			Service:   "network",
+			Name:      name,
+			InUse:     int64(quotaDetail.Used),
+			Limit:     int64(quotaDetail.Limit - quotaDetail.Reserved),
+			Unlimited: quotaDetail.Limit < 0,
+		})
+	}
+	addQuota("Port", qs.Port)
+	addQuota("Router", qs.Router)
+	addQuota("Subnet", qs.Subnet)
+	addQuota("Network", qs.Network)
+	addQuota("SecurityGroup", qs.SecurityGroup)
+	addQuota("SecurityGroupRule", qs.SecurityGroupRule)
+
+	return quotas, nil
+}
+
+func getProjectID(ci *CloudInfo) (string, error) {
+	authResult := ci.clients.identityClient.GetAuthResult()
 	if authResult == nil {
-		return "", errors.Errorf("Client did not use openstack.Authenticate()")
+		return "", fmt.Errorf("client did not use openstack.Authenticate()")
 	}
 
 	switch authResult.(type) {
 	case tokensv2.CreateResult:
 		// Gophercloud has support for v2, but keystone has deprecated
 		// and it's not even documented.
-		return "", errors.Errorf("Extracting project ID using the keystone v2 API is not supported")
+		return "", fmt.Errorf("extracting project ID using the keystone v2 API is not supported")
 
 	case tokensv3.CreateResult:
 		v3Result := authResult.(tokensv3.CreateResult)
 		project, err := v3Result.ExtractProject()
 		if err != nil {
-			return "", errors.Wrap(err, "Extracting project from v3 authResult")
+			return "", fmt.Errorf("extracting project from v3 authResult: %w", err)
 		} else if project == nil {
-			return "", errors.Errorf("Token is not scoped to a project")
+			return "", fmt.Errorf("token is not scoped to a project")
 		}
 		return project.ID, nil
 
 	default:
-		return "", errors.Errorf("Unsupported AuthResult type: %T", authResult)
+		return "", fmt.Errorf("unsupported AuthResult type: %T", authResult)
 	}
-}
-
-// loadQuotas loads the quota information for a project and provided services. It provides information
-// about the usage and limit for each resource quota.
-func loadQuotas(opts *clientconfig.ClientOpts) ([]quota.Quota, error) {
-	records, err := loadLimits(opts)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load quota limits")
-	}
-	return newQuota(records), nil
-}
-
-func newQuota(limits []record) []quota.Quota {
-	var ret []quota.Quota
-	for _, limit := range limits {
-		isUnlimited := limit.Value == -1
-		q := quota.Quota{
-			Service: limit.Service,
-			Name:    limit.Name,
-			// Since limit.Value contains the actual
-			// available resources, we can set InUse to 0.
-			InUse:     0,
-			Limit:     limit.Value,
-			Unlimited: isUnlimited,
-		}
-		ret = append(ret, q)
-	}
-	return ret
 }
 
 // isUnauthorized checks if the error is unauthorized (http code 403)

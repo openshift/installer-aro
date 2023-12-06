@@ -3,19 +3,22 @@ package bootstrap
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/openshift/installer/pkg/asset/cluster"
-	osp "github.com/openshift/installer/pkg/destroy/openstack"
-	"github.com/openshift/installer/pkg/terraform"
-	"github.com/openshift/installer/pkg/types/gcp"
-	"github.com/openshift/installer/pkg/types/libvirt"
-	"github.com/openshift/installer/pkg/types/openstack"
-	"github.com/openshift/installer/pkg/types/ovirt"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
+	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/installer/pkg/asset/cluster"
+	openstackasset "github.com/openshift/installer/pkg/asset/cluster/openstack"
+	osp "github.com/openshift/installer/pkg/destroy/openstack"
+	infra "github.com/openshift/installer/pkg/infrastructure/platform"
+	ibmcloudtfvars "github.com/openshift/installer/pkg/tfvars/ibmcloud"
+	typesazure "github.com/openshift/installer/pkg/types/azure"
+	"github.com/openshift/installer/pkg/types/featuregates"
+	ibmcloudtypes "github.com/openshift/installer/pkg/types/ibmcloud"
+	"github.com/openshift/installer/pkg/types/openstack"
 )
 
 // Destroy uses Terraform to remove bootstrap resources.
@@ -30,80 +33,53 @@ func Destroy(dir string) (err error) {
 		return errors.New("no platform configured in metadata")
 	}
 
-	tfPlatformVarsFileName := fmt.Sprintf(cluster.TfPlatformVarsFileName, platform)
-
-	tempDir, err := ioutil.TempDir("", "openshift-install-")
-	if err != nil {
-		return errors.Wrap(err, "failed to create temporary directory for Terraform execution")
-	}
-	defer os.RemoveAll(tempDir)
-
-	extraArgs := []string{}
-	for _, filename := range []string{terraform.StateFileName, cluster.TfVarsFileName, tfPlatformVarsFileName} {
-		sourcePath := filepath.Join(dir, filename)
-		targetPath := filepath.Join(tempDir, filename)
-		err = copy(sourcePath, targetPath)
-		if err != nil {
-			if os.IsNotExist(err) && err.(*os.PathError).Path == sourcePath && filename == tfPlatformVarsFileName {
-				continue // platform may not need platform-specific Terraform variables
-			}
-			return errors.Wrapf(err, "failed to copy %s to the temporary directory", filename)
-		}
-		if strings.HasSuffix(filename, ".tfvars.json") {
-			extraArgs = append(extraArgs, fmt.Sprintf("-var-file=%s", targetPath))
-		}
-	}
-
-	switch platform {
-	case gcp.Name:
-		// First remove the bootstrap node from the load balancers to avoid race condition.
-		_, err = terraform.Apply(tempDir, platform, append(extraArgs, "-var=gcp_bootstrap_lb=false")...)
-		if err != nil {
-			return errors.Wrap(err, "failed disabling bootstrap load balancing")
+	if platform == openstack.Name {
+		if err := openstackasset.PreTerraform(); err != nil {
+			return errors.Wrapf(err, "Failed to  initialize infrastructure")
 		}
 
-		// Then destory the bootstrap instance and instance group so destroy runs cleanly.
-		// First remove the bootstrap from LB target and its instance so that bootstrap module is cleanly destroyed.
-		_, err = terraform.Apply(tempDir, platform, append(extraArgs, "-var=gcp_bootstrap_enabled=false")...)
-		if err != nil {
-			return errors.Wrap(err, "failed disabling bootstrap")
-		}
-	case libvirt.Name:
-		// First remove the bootstrap node from DNS
-		_, err = terraform.Apply(tempDir, platform, append(extraArgs, "-var=bootstrap_dns=false")...)
-		if err != nil {
-			return errors.Wrap(err, "Terraform apply")
-		}
-	case openstack.Name:
 		imageName := metadata.InfraID + "-ignition"
-		err = osp.DeleteGlanceImage(imageName, metadata.OpenStack.Cloud)
-		if err != nil {
+		if err := osp.DeleteGlanceImage(imageName, metadata.OpenStack.Cloud); err != nil {
 			return errors.Wrapf(err, "Failed to delete glance image %s", imageName)
 		}
-	case ovirt.Name:
-		extraArgs = append(extraArgs, "-target=module.template.ovirt_vm.tmp_import_vm")
-		extraArgs = append(extraArgs, "-target=module.template.ovirt_image_transfer.releaseimage")
 	}
 
-	extraArgs = append(extraArgs, "-target=module.bootstrap")
-	err = terraform.Destroy(tempDir, platform, extraArgs...)
+	// Azure Stack uses the Azure platform but has its own Terraform configuration.
+	if platform == typesazure.Name && metadata.Azure.CloudName == typesazure.StackCloud {
+		platform = typesazure.StackTerraformName
+	}
+
+	// IBM Cloud allows override of service endpoints, which would be required during bootstrap destroy.
+	// Create a JSON file with overrides, if these endpoints are present
+	if platform == ibmcloudtypes.Name && metadata.IBMCloud != nil && len(metadata.IBMCloud.ServiceEndpoints) > 0 {
+		// Build the JSON containing the endpoint overrides for IBM Cloud Services.
+		jsonData, err := ibmcloudtfvars.CreateEndpointJSON(metadata.IBMCloud.ServiceEndpoints, metadata.IBMCloud.Region)
+		if err != nil {
+			return fmt.Errorf("failed generating endpoint override JSON data for bootstrap destroy: %w", err)
+		}
+		// Since there are ServiceEndpoints, we expect JSON data to be generated.
+		if jsonData == nil {
+			return fmt.Errorf("no endpoint override JSON data generated for set of endpoint overrides")
+		}
+
+		// If JSON data was generated, create the JSON file for IBM Cloud Terraform provider to use during destroy.
+		endpointsFilePath := filepath.Join(dir, ibmcloudtfvars.IBMCloudEndpointJSONFileName)
+		if err := os.WriteFile(endpointsFilePath, jsonData, 0o600); err != nil {
+			return fmt.Errorf("failed to write IBM Cloud service endpoint override JSON file for bootstrap destroy: %w", err)
+		}
+		logrus.Debugf("generated ibm endpoint overrides file: %s", endpointsFilePath)
+	}
+
+	fg := featuregates.FeatureGateFromFeatureSets(configv1.FeatureSets, metadata.FeatureSet, metadata.CustomFeatureSet)
+
+	provider, err := infra.ProviderForPlatform(platform, fg)
 	if err != nil {
-		return errors.Wrap(err, "Terraform destroy")
+		return fmt.Errorf("error getting infrastructure provider: %w", err)
 	}
 
-	tempStateFilePath := filepath.Join(dir, terraform.StateFileName+".new")
-	err = copy(filepath.Join(tempDir, terraform.StateFileName), tempStateFilePath)
-	if err != nil {
-		return errors.Wrapf(err, "failed to copy %s from the temporary directory", terraform.StateFileName)
-	}
-	return os.Rename(tempStateFilePath, filepath.Join(dir, terraform.StateFileName))
-}
-
-func copy(from string, to string) error {
-	data, err := ioutil.ReadFile(from)
-	if err != nil {
-		return err
+	if err := provider.DestroyBootstrap(dir); err != nil {
+		return fmt.Errorf("error destroying bootstrap resources %w", err)
 	}
 
-	return ioutil.WriteFile(to, data, 0666)
+	return nil
 }

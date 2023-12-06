@@ -20,6 +20,9 @@ func ValidateMachinePool(p *ovirt.MachinePool, fldPath *field.Path) field.ErrorL
 		if p.CPU.Sockets <= 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("sockets"), p.CPU.Sockets, "CPU sockets must be positive"))
 		}
+		if p.CPU.Threads <= 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("threads"), p.CPU.Threads, "CPU threads must be positive"))
+		}
 	}
 
 	if p.MemoryMB < 0 {
@@ -48,6 +51,30 @@ func ValidateMachinePool(p *ovirt.MachinePool, fldPath *field.Path) field.ErrorL
 		}
 	}
 
+	if p.AutoPinningPolicy != "" && !ValidAutoPinningPolicy(p.AutoPinningPolicy) {
+		allErrs = append(allErrs, field.NotSupported(fldPath.Child("autoPinningPolicy"), p.AutoPinningPolicy,
+			[]string{string(ovirt.AutoPinningNone), string(ovirt.AutoPinningResizeAndPin)}))
+	}
+
+	if p.Hugepages > 0 {
+		if p.Hugepages != 2048 && p.Hugepages != 1048576 {
+			allErrs = append(allErrs, field.NotSupported(fldPath.Child("hugepages"), p.Hugepages,
+				[]string{ovirt.Hugepages2MB.String(), ovirt.Hugepages1GB.String()}))
+		}
+	}
+
+	switch p.Format {
+	case "":
+	case "raw":
+	case "cow":
+	default:
+		allErrs = append(allErrs, field.NotSupported(
+			fldPath.Child("format"),
+			p.Format,
+			[]string{"", "raw", "cow"},
+		))
+	}
+
 	return allErrs
 }
 
@@ -67,5 +94,23 @@ func supportedVMTypes() []ovirt.VMType {
 		ovirt.VMTypeDesktop,
 		ovirt.VMTypeServer,
 		ovirt.VMTypeHighPerformance,
+	}
+}
+
+// ValidAutoPinningPolicy returns true if the AutoPinningPolicy is supported.
+func ValidAutoPinningPolicy(autoPinningPolicy ovirt.AutoPinningPolicy) bool {
+	for _, v := range supportedAutoPinningPolicies() {
+		if autoPinningPolicy == v {
+			return true
+		}
+	}
+	return false
+}
+
+// supportedAutoPinningPolicies returns a slice of all supported AutoPinningPolicy.
+func supportedAutoPinningPolicies() []ovirt.AutoPinningPolicy {
+	return []ovirt.AutoPinningPolicy{
+		ovirt.AutoPinningNone,
+		ovirt.AutoPinningResizeAndPin,
 	}
 }
