@@ -12,7 +12,6 @@ import (
 	"github.com/openshift/installer/pkg/asset/password"
 	"github.com/openshift/installer/pkg/asset/templates/content/bootkube"
 	"github.com/openshift/installer/pkg/asset/templates/content/openshift"
-	"github.com/openshift/installer/pkg/asset/tls"
 )
 
 var (
@@ -62,16 +61,5 @@ var (
 		&machine.Worker{},
 		&bootstrap.SingleNodeBootstrapInPlace{},
 		&cluster.Metadata{},
-	}
-
-	// Cluster are the cluster targeted assets.
-	Cluster = []asset.WritableAsset{
-		&cluster.Metadata{},
-		&machine.MasterIgnitionCustomizations{},
-		&machine.WorkerIgnitionCustomizations{},
-		&cluster.TerraformVariables{},
-		&kubeconfig.AdminClient{},
-		&password.KubeadminPassword{},
-		&tls.JournalCertKey{},
 	}
 )
