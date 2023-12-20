@@ -2,27 +2,29 @@
 # This file just uses aliases defined in OWNERS_ALIASES.
 
 reviewers:
+- anshulvermapatel
 - bennerv
 - cadenmarchese
+- dofinn
 - hawkowl
 - hlipsig
 - petrkotas
 - rogbas
+- shivkumar13
 - sudobrendan
 - s-amann
 - ulrichschlueter
-- shivkumar13
-- anshulvermapatel
 approvers:
+- anshulvermapatel
 - bennerv
 - cadenmarchese
+- dofinn
 - hawkowl
 - hlipsig
 - petrkotas
 - rogbas
+- shivkumar13
 - sudobrendan
 - s-amann
 - ulrichschlueter
-- shivkumar13
-- anshulvermapatel
 component: Installer
