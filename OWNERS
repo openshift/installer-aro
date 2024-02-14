@@ -1,10 +1,34 @@
 # See the OWNERS docs: https://git.k8s.io/community/contributors/guide/owners.md
 # This file just uses aliases defined in OWNERS_ALIASES.
 
-approvers:
-  - installer-team
-  - sdodson
-  - zaneb
 reviewers:
-  - installer-team
+- anshulvermapatel
+- bennerv
+- cadenmarchese
+- dofinn
+- hawkowl
+- hlipsig
+- jaitaiwan
+- petrkotas
+- rogbas
+- s-amann
+- shivkumar13
+- sudobrendan
+- tiguelu
+- ulrichschlueter
+approvers:
+- anshulvermapatel
+- bennerv
+- cadenmarchese
+- dofinn
+- hawkowl
+- hlipsig
+- jaitaiwan
+- petrkotas
+- rogbas
+- s-amann
+- shivkumar13
+- sudobrendan
+- tiguelu
+- ulrichschlueter
 component: Installer
