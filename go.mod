@@ -91,11 +91,11 @@ require (
 	github.com/ulikunitz/xz v0.5.11
 	github.com/vincent-petithory/dataurl v1.0.0
 	github.com/vmware/govmomi v0.30.4
-	golang.org/x/crypto v0.14.0
+	golang.org/x/crypto v0.17.0
 	golang.org/x/oauth2 v0.10.0
 	golang.org/x/sync v0.3.0
-	golang.org/x/sys v0.13.0
-	golang.org/x/term v0.13.0
+	golang.org/x/sys v0.15.0
+	golang.org/x/term v0.15.0
 	google.golang.org/api v0.130.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5
 	google.golang.org/grpc v1.58.2
@@ -232,7 +232,7 @@ require (
 	golang.org/x/exp v0.0.0-20220827204233-334a2380cb91 // indirect
 	golang.org/x/mod v0.13.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
@@ -289,9 +289,6 @@ replace github.com/openshift/assisted-service/api => github.com/openshift/assist
 replace github.com/openshift/assisted-service/client => github.com/openshift/assisted-service/client v0.0.0-20230831114549-1922eda29cf8
 
 replace github.com/openshift/assisted-service/models => github.com/openshift/assisted-service/models v0.0.0-20230831114549-1922eda29cf8
-
-// https://bugzilla.redhat.com/show_bug.cgi?id=2064702
-replace golang.org/x/crypto => golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
 
 // https://bugzilla.redhat.com/show_bug.cgi?id=2100495
 replace golang.org/x/text => golang.org/x/text v0.3.7
