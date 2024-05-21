@@ -19,26 +19,32 @@ if [ "$IS_CONTAINER" != "" ]; then
   # Verify the main installer module.
   verify_module "${PWD}"
 
-  # Verify the sub-modules for the terraform providers.
-  # The -compat=1.18 is needed for the openstack provider. The provider uses golang.org/x/mod, which go 1.18 selects
-  # as v0.3.0 but go 1.16 selects as v0.4.2.
-  find terraform/providers -maxdepth 1 -mindepth 1 -print0 | while read -r -d '' dir
-  do
-    verify_module "$dir" "1.18"
-  done
-  # Verify the terraform sub-module.
-  verify_module "terraform/terraform"
+  if [ "${SKIP_TERRAFORM}" != y ]; then
+    # Verify the sub-modules for the terraform providers.
+    # The -compat=1.18 is needed for the openstack provider. The provider uses golang.org/x/mod, which go 1.18 selects
+    # as v0.3.0 but go 1.16 selects as v0.4.2.
+    find terraform/providers -maxdepth 1 -mindepth 1 -print0 | while read -r -d '' dir
+    do
+      verify_module "$dir" "1.18"
+    done
+    # Verify the terraform sub-module.
+    verify_module "terraform/terraform"
+  fi
 
-  find cluster-api/providers -maxdepth 1 -mindepth 1 -print0 | while read -r -d '' dir
-  do
-    verify_module "$dir"
-  done
-  verify_module "cluster-api/cluster-api"
+  if [ -n "${OPENSHIFT_INSTALL_CLUSTER_API}" ]; then
+    find cluster-api/providers -maxdepth 1 -mindepth 1 -print0 | while read -r -d '' dir
+    do
+      verify_module "$dir"
+    done
+    verify_module "cluster-api/cluster-api"
+  fi
 
   git diff --exit-code
 else
   podman run --rm \
     --env IS_CONTAINER=TRUE \
+    --env SKIP_TERRAFORM="${SKIP_TERRAFORM}" \
+    --env OPENSHIFT_INSTALL_CLUSTER_API="${OPENSHIFT_INSTALL_CLUSTER_API}" \
     --volume "${PWD}:/go/src/github.com/openshift/installer:z" \
     --workdir /go/src/github.com/openshift/installer \
     docker.io/golang:1.20 \
