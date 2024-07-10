@@ -100,6 +100,29 @@ spec:
   osImageURL: ""
 `
 
+var AROEtcHostsMasterMachineConfig = `apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  creationTimestamp: null
+  labels:
+    machineconfiguration.openshift.io/role: master
+  name: 99-master-aro-etc-hosts-gateway-domains
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - append:
+        - source: data:text/plain;charset=utf-8;base64,CWFwaS50ZXN0LWNsdXN0ZXIudGVzdC1kb21haW4gYXBpLWludC50ZXN0LWNsdXN0ZXIudGVzdC1kb21haW4K
+        path: /etc/hosts
+  extensions: null
+  fips: false
+  kernelArguments: null
+  kernelType: ""
+  osImageURL: ""
+`
+
 func TestMasterGenerateMachineConfigs(t *testing.T) {
 	cases := []struct {
 		name                  string
@@ -110,7 +133,7 @@ func TestMasterGenerateMachineConfigs(t *testing.T) {
 		{
 			name:                  "no key hyperthreading enabled",
 			hyperthreading:        types.HyperthreadingEnabled,
-			expectedMachineConfig: []string{aroDNSMasterMachineConfig},
+			expectedMachineConfig: []string{aroDNSMasterMachineConfig, AROEtcHostsMasterMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading enabled",
@@ -137,7 +160,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`, aroDNSMasterMachineConfig},
+`, aroDNSMasterMachineConfig, AROEtcHostsMasterMachineConfig},
 		},
 		{
 			name:           "no key hyperthreading disabled",
@@ -159,7 +182,7 @@ spec:
   - nosmt
   kernelType: ""
   osImageURL: ""
-`, aroDNSMasterMachineConfig},
+`, aroDNSMasterMachineConfig, AROEtcHostsMasterMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading disabled",
@@ -203,7 +226,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`, aroDNSMasterMachineConfig},
+`, aroDNSMasterMachineConfig, AROEtcHostsMasterMachineConfig},
 		},
 	}
 	for _, tc := range cases {
