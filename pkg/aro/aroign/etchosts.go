@@ -5,7 +5,7 @@ import (
 	"text/template"
 
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/blang/semver"
+	"github.com/coreos/go-semver/semver"
 	ign3types "github.com/coreos/ignition/v2/config/v3_2/types"
 	"github.com/vincent-petithory/dataurl"
 )
@@ -38,7 +38,10 @@ func config(clusterDomain string, apiIntIP string, gatewayDomains []string, gate
 }
 
 func EtcHostsIgnition(clusterDomain string, apiIntIP string, gatewayDomains []string, gatewayPrivateEndpointIP string) (*ign3types.Config, error) {
-
+	config, err := config(clusterDomain, apiIntIP, gatewayDomains, gatewayPrivateEndpointIP)
+	if err != nil {
+		return nil, err
+	}
 	ign := &ign3types.Config{
 		Ignition: ign3types.Ignition{
 			// This Ignition Config version should be kept up to date with the default
@@ -60,13 +63,15 @@ func EtcHostsIgnition(clusterDomain string, apiIntIP string, gatewayDomains []st
 					},
 					FileEmbedded1: ign3types.FileEmbedded1{
 						Append: []ign3types.Resource{
-							Source: to.StringPtr(dataurl.EncodeBytes(config)),
+							{
+								Source: to.StringPtr(dataurl.EncodeBytes(config)),
+							},
 						},
 						Mode: to.IntPtr(0644),
 					},
 				},
-			}
-		}
+			},
+		},
 	}
 
 	return ign, nil
