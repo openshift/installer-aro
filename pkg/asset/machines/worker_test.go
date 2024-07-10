@@ -94,6 +94,29 @@ spec:
   osImageURL: ""
 `
 
+var AROEtcHostsWorkerMachineConfig = `apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  creationTimestamp: null
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-aro-etc-hosts-gateway-domains
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - append:
+        - source: data:text/plain;charset=utf-8;base64,CWFwaS50ZXN0LWNsdXN0ZXIudGVzdC1kb21haW4gYXBpLWludC50ZXN0LWNsdXN0ZXIudGVzdC1kb21haW4K
+        path: /etc/hosts
+  extensions: null
+  fips: false
+  kernelArguments: null
+  kernelType: ""
+  osImageURL: ""
+`
+
 func TestWorkerGenerate(t *testing.T) {
 	cases := []struct {
 		name                  string
@@ -104,7 +127,7 @@ func TestWorkerGenerate(t *testing.T) {
 		{
 			name:                  "no key hyperthreading enabled",
 			hyperthreading:        types.HyperthreadingEnabled,
-			expectedMachineConfig: []string{aroDNSWorkerMachineConfig},
+			expectedMachineConfig: []string{aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading enabled",
@@ -131,7 +154,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`, aroDNSWorkerMachineConfig},
+`, aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 		{
 			name:           "no key hyperthreading disabled",
@@ -153,7 +176,7 @@ spec:
   - nosmt
   kernelType: ""
   osImageURL: ""
-`, aroDNSWorkerMachineConfig},
+`, aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading disabled",
@@ -197,7 +220,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`, aroDNSWorkerMachineConfig},
+`, aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 	}
 	for _, tc := range cases {
