@@ -46,10 +46,10 @@ set -uo pipefail
 
 trap 'jobs -p | xargs kill || true; wait; exit 0' TERM
 
-OPENSHIFT_MARKER="{{ScriptMarker}}"
+OPENSHIFT_MARKER="{{ .ScriptMarker }}"
 HOSTS_FILE="/etc/hosts"
-CONFIG_FILE="/etc/hosts.d/{{ConfigFileName}}"
-TEMP_FILE="/etc/hosts.d/{{TempFileName}}"
+CONFIG_FILE="/etc/hosts.d/{{ .ConfigFileName }}"
+TEMP_FILE="/etc/hosts.d/{{ .TempFileName }}"
 
 # Make a temporary file with the old hosts file's data.
 if ! cp -f "${HOSTS_FILE}" "${TEMP_FILE}"; then
@@ -78,7 +78,7 @@ Before=network-online.target
 
 [Service]
 # ExecStart will copy the hosts defined in /etc/hosts.d/aro.conf to /etc/hosts
-ExecStart=/bin/bash /usr/local/bin/{{ScriptFileName}}
+ExecStart=/bin/bash /usr/local/bin/{{ .ScriptFileName }}
 
 [Install]
 WantedBy=multi-user.target
@@ -160,6 +160,9 @@ func EtcHostsIgnitionConfig(clusterDomain string, apiIntIP string, gatewayDomain
 					Node: ign3types.Node{
 						Path:      "/etc/hosts.d/" + configFileName,
 						Overwrite: to.BoolPtr(true),
+						User: ign3types.NodeUser{
+							Name: to.StringPtr("root"),
+						},
 					},
 					FileEmbedded1: ign3types.FileEmbedded1{
 						Contents: ign3types.Resource{
