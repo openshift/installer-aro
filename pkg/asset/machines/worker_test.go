@@ -94,6 +94,55 @@ spec:
   osImageURL: ""
 `
 
+var AROEtcHostsWorkerMachineConfig = `apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  creationTimestamp: null
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-aro-etc-hosts-gateway-domains
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          source: data:text/plain;charset=utf-8;base64,CWFwaS50ZXN0LWNsdXN0ZXIudGVzdC1kb21haW4gYXBpLWludC50ZXN0LWNsdXN0ZXIudGVzdC1kb21haW4KCQo=
+        mode: 420
+        overwrite: true
+        path: /etc/hosts.d/aro.conf
+        user:
+          name: root
+      - contents:
+          source: data:text/plain;charset=utf-8;base64,IyEvYmluL2Jhc2gKc2V0IC11byBwaXBlZmFpbAoKdHJhcCAnam9icyAtcCB8IHhhcmdzIGtpbGwgfHwgdHJ1ZTsgd2FpdDsgZXhpdCAwJyBURVJNCgpPUEVOU0hJRlRfTUFSS0VSPSJvcGVuc2hpZnQtYXJvLWV0Y2hvc3RzLXJlc29sdmVyIgpIT1NUU19GSUxFPSIvZXRjL2hvc3RzIgpDT05GSUdfRklMRT0iL2V0Yy9ob3N0cy5kL2Fyby5jb25mIgpURU1QX0ZJTEU9Ii9ldGMvaG9zdHMuZC9hcm8udG1wIgoKIyBNYWtlIGEgdGVtcG9yYXJ5IGZpbGUgd2l0aCB0aGUgb2xkIGhvc3RzIGZpbGUncyBkYXRhLgppZiAhIGNwIC1mICIke0hPU1RTX0ZJTEV9IiAiJHtURU1QX0ZJTEV9IjsgdGhlbgogIGVjaG8gIkZhaWxlZCB0byBwcmVzZXJ2ZSBob3N0cyBmaWxlLiBFeGl0aW5nLiIKICBleGl0IDEKZmkKCmlmICEgc2VkIC0tc2lsZW50ICIvIyAke09QRU5TSElGVF9NQVJLRVJ9L2Q7IHcgJHtURU1QX0ZJTEV9IiAiJHtIT1NUU19GSUxFfSI7IHRoZW4KICAjIE9ubHkgY29udGludWUgcmVidWlsZGluZyB0aGUgaG9zdHMgZW50cmllcyBpZiBpdHMgb3JpZ2luYWwgY29udGVudCBpcyBwcmVzZXJ2ZWQKICBzbGVlcCA2MCAmIHdhaXQKICBjb250aW51ZQpmaQoKd2hpbGUgSUZTPSByZWFkIC1yIGxpbmU7IGRvCiAgICBlY2hvICIke2xpbmV9ICMgJHtPUEVOU0hJRlRfTUFSS0VSfSIgPj4gIiR7VEVNUF9GSUxFfSIKZG9uZSA8ICIke0NPTkZJR19GSUxFfSIKCiMgUmVwbGFjZSAvZXRjL2hvc3RzIHdpdGggb3VyIG1vZGlmaWVkIHZlcnNpb24gaWYgbmVlZGVkCmNtcCAiJHtURU1QX0ZJTEV9IiAiJHtIT1NUU19GSUxFfSIgfHwgY3AgLWYgIiR7VEVNUF9GSUxFfSIgIiR7SE9TVFNfRklMRX0iCiMgVEVNUF9GSUxFIGlzIG5vdCByZW1vdmVkIHRvIGF2b2lkIGZpbGUgY3JlYXRlL2RlbGV0ZSBhbmQgYXR0cmlidXRlcyBjb3B5IGNodXJuCg==
+        mode: 484
+        overwrite: true
+        path: /usr/local/bin/aro-etchosts-resolver.sh
+        user:
+          name: root
+    systemd:
+      units:
+      - contents: |
+          [Unit]
+          Description=One shot service that appends static domains to etchosts
+          Before=network-online.target
+
+          [Service]
+          # ExecStart will copy the hosts defined in /etc/hosts.d/aro.conf to /etc/hosts
+          ExecStart=/bin/bash /usr/local/bin/aro-etchosts-resolver.sh
+
+          [Install]
+          WantedBy=multi-user.target
+        enabled: true
+        name: aro-etchosts-resolver.service
+  extensions: null
+  fips: false
+  kernelArguments: null
+  kernelType: ""
+  osImageURL: ""
+`
+
 func TestWorkerGenerate(t *testing.T) {
 	cases := []struct {
 		name                  string
@@ -104,7 +153,7 @@ func TestWorkerGenerate(t *testing.T) {
 		{
 			name:                  "no key hyperthreading enabled",
 			hyperthreading:        types.HyperthreadingEnabled,
-			expectedMachineConfig: []string{aroDNSWorkerMachineConfig},
+			expectedMachineConfig: []string{aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading enabled",
@@ -131,7 +180,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`, aroDNSWorkerMachineConfig},
+`, aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 		{
 			name:           "no key hyperthreading disabled",
@@ -153,7 +202,7 @@ spec:
   - nosmt
   kernelType: ""
   osImageURL: ""
-`, aroDNSWorkerMachineConfig},
+`, aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 		{
 			name:           "key present hyperthreading disabled",
@@ -197,7 +246,7 @@ spec:
   kernelArguments: null
   kernelType: ""
   osImageURL: ""
-`, aroDNSWorkerMachineConfig},
+`, aroDNSWorkerMachineConfig, AROEtcHostsWorkerMachineConfig},
 		},
 	}
 	for _, tc := range cases {
