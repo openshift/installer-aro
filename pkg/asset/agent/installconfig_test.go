@@ -4,8 +4,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 
@@ -577,7 +577,7 @@ networking:
   networkType: OpenShiftSDN
   machineNetwork:
   - cidr: 192.168.122.0/23
-  serviceNetwork: 
+  serviceNetwork:
   - 172.30.0.0/16
 compute:
   - architecture: amd64
@@ -600,7 +600,7 @@ platform:
     defaultDataStore: testDefaultDataStore
     cluster: testCluster
     apiVIP: 192.168.122.10
-    ingressVIPs: 
+    ingressVIPs:
       - 192.168.122.11
 pullSecret: "{\"auths\":{\"example.com\":{\"auth\":\"authorization value\"}}}"
 `,

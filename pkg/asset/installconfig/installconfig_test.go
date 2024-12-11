@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 
@@ -191,7 +191,7 @@ platform:
   aws:
     region: us-east-1
 pullSecret: "{\"auths\":{\"example.com\":{\"auth\":\"authorization value\"}}}"
-wrong_key: wrong_value 
+wrong_key: wrong_value
 `,
 			expectedFound: true,
 			expectedConfig: &types.InstallConfig{

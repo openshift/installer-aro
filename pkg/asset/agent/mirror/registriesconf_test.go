@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/installer/pkg/asset"
@@ -220,7 +220,7 @@ func TestRegistries_LoadedFromDisk(t *testing.T) {
 			name: "location-key-not-found-in-config-file",
 			data: `
 [[registry]]
-wrongLocationkey = "registry.ci.openshift.org/origin/release" 
+wrongLocationkey = "registry.ci.openshift.org/origin/release"
 mirror-by-digest-only = false
 
 [[registry.mirror]]
@@ -238,7 +238,7 @@ location = "virthost.ostest.test.metalkube.org:5000/localimages/local-release-im
 			name: "valid-config-file",
 			data: `
 [[registry]]
-location = "registry.ci.openshift.org/origin/release" 
+location = "registry.ci.openshift.org/origin/release"
 mirror-by-digest-only = false
 
 [[registry.mirror]]
@@ -257,7 +257,7 @@ location = "virthost.ostest.test.metalkube.org:5000/localimages/local-release-im
 			name: "location-does-not-match-with-releaseImage",
 			data: `
 [[registry]]
-location = "registry.ci.openshift.org/ocp/release" 
+location = "registry.ci.openshift.org/ocp/release"
 mirror-by-digest-only = false
 
 [[registry.mirror]]
