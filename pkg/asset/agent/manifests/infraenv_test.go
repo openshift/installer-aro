@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -192,7 +192,7 @@ spec:
   clusterRef:
     name: ocp-edge-cluster-0
     namespace: cluster0
-  nmStateConfigLabelSelector: 
+  nmStateConfigLabelSelector:
     matchLabels:
       cluster0-nmstate-label-name: cluster0-nmstate-label-value
   pullSecretRef:

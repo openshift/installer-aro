@@ -8,8 +8,8 @@ package tools
 
 import (
 	_ "github.com/daixiang0/gci" // dependency of hack/go-fmt.sh
-	// used to generate mocks
-	_ "github.com/golang/mock/mockgen"
+	// Needed for mock generation
+	_ "go.uber.org/mock/mockgen/model"
 	// dependency of generating CRD for install-config
 	_ "sigs.k8s.io/controller-tools/cmd/controller-gen"
 )

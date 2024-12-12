@@ -7,8 +7,8 @@ import (
 
 	"github.com/IBM/platform-services-go-sdk/iamidentityv1"
 	"github.com/IBM/vpc-go-sdk/vpcv1"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 
 	"github.com/openshift/installer/pkg/asset/installconfig/ibmcloud/mock"
 	"github.com/openshift/installer/pkg/asset/installconfig/ibmcloud/responses"
