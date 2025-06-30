@@ -7,7 +7,6 @@ import (
 
 	v1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/types"
-	"github.com/openshift/installer/pkg/types/gcp"
 	"github.com/openshift/installer/pkg/types/vsphere"
 )
 
@@ -17,46 +16,6 @@ func TestFeatureGates(t *testing.T) {
 		installConfig *types.InstallConfig
 		expected      string
 	}{
-		{
-			name: "GCP UserTags is allowed with Feature Gates enabled",
-			installConfig: func() *types.InstallConfig {
-				c := validInstallConfig()
-				c.FeatureSet = v1.TechPreviewNoUpgrade
-				c.GCP = validGCPPlatform()
-				c.GCP.UserTags = []gcp.UserTag{{ParentID: "a", Key: "b", Value: "c"}}
-				return c
-			}(),
-		},
-		{
-			name: "GCP UserTags is not allowed without Feature Gates",
-			installConfig: func() *types.InstallConfig {
-				c := validInstallConfig()
-				c.GCP = validGCPPlatform()
-				c.GCP.UserTags = []gcp.UserTag{{ParentID: "a", Key: "b", Value: "c"}}
-				return c
-			}(),
-			expected: `^platform.gcp.userTags: Forbidden: this field is protected by the GCPLabelsTags feature gate which must be enabled through either the TechPreviewNoUpgrade or CustomNoUpgrade feature set$`,
-		},
-		{
-			name: "GCP UserLabels is allowed with Feature Gates enabled",
-			installConfig: func() *types.InstallConfig {
-				c := validInstallConfig()
-				c.FeatureSet = v1.TechPreviewNoUpgrade
-				c.GCP = validGCPPlatform()
-				c.GCP.UserLabels = []gcp.UserLabel{{Key: "a", Value: "b"}}
-				return c
-			}(),
-		},
-		{
-			name: "GCP UserLabels is not allowed without Feature Gates",
-			installConfig: func() *types.InstallConfig {
-				c := validInstallConfig()
-				c.GCP = validGCPPlatform()
-				c.GCP.UserLabels = []gcp.UserLabel{{Key: "a", Value: "b"}}
-				return c
-			}(),
-			expected: `^platform.gcp.userLabels: Forbidden: this field is protected by the GCPLabelsTags feature gate which must be enabled through either the TechPreviewNoUpgrade or CustomNoUpgrade feature set$`,
-		},
 		{
 			name: "vSphere hosts is allowed with Feature Gates enabled",
 			installConfig: func() *types.InstallConfig {

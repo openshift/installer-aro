@@ -1066,6 +1066,8 @@ func TestValidateInstallConfig(t *testing.T) {
 				c.Platform = types.Platform{
 					GCP: validGCPPlatform(),
 				}
+				c.GCP.UserTags = []gcp.UserTag{{ParentID: "12345", Key: "key", Value: "val"}}
+				c.GCP.UserLabels = []gcp.UserLabel{{Key: "key", Value: "val"}}
 				return c
 			}(),
 		},
