@@ -1,4 +1,5 @@
-# OpenShift Installer
+#This repository is Archived. The ARO product no longer requires a seperate fork for the OpenShift installer as of version 4.16. The contents of this repo are now historical only.
+## OpenShift Installer
 
 ## Supported Platforms
 
